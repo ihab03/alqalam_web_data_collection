@@ -37,8 +37,9 @@ class StorageService {
   String? operator [](String key) => getItem(key);
   void operator []=(String key, String value) => setItem(key, value);
 
-  /// Clears in-memory fallback (primarily for test resets).
+  /// Clears in-memory fallback and platform storage (primarily for test resets).
   void clearMemoryFallback() {
+    _impl.clear();
     _inMemoryFallback.clear();
   }
 }

@@ -22,6 +22,12 @@ class WebStorageImpl {
     } catch (_) {}
   }
 
+  void clear() {
+    try {
+      web.window.localStorage.clear();
+    } catch (_) {}
+  }
+
   String getUserAgent() {
     try {
       return web.window.navigator.userAgent;

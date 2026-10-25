@@ -172,6 +172,9 @@ class _CollectionScreenState extends State<CollectionScreen> {
         logicalWidth: logicalWidth,
         logicalHeight: logicalHeight,
         dpr: dpr,
+        contributorKey: _sessionManager.contributorDirectoryKey,
+        contributorName: _sessionManager.contributorName,
+        contributorUid: _sessionManager.contributorUid,
       );
 
       // Mark completed in session manager
@@ -253,6 +256,73 @@ class _CollectionScreenState extends State<CollectionScreen> {
     });
 
     _setupLineRecordersForCurrentPrompt();
+  }
+
+  /// Dialog allowing the user to view or customize their contributor display name.
+  void _showEditContributorNameDialog() {
+    final currentName = _sessionManager.contributorName;
+    final controller = TextEditingController(
+      text: currentName == 'anonymous' ? '' : currentName,
+    );
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.person_rounded, color: Color(0xFF065F46)),
+            SizedBox(width: 8),
+            Text(
+              'اسم المساهم',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontFamilyFallback: ['Amiri', 'Traditional Arabic'],
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'أدخل اسمك أو كنيتك ليتم حفظ مساهمتك في مجلد خاص بك باسمك في قاعدة البيانات:',
+              textDirection: TextDirection.rtl,
+              style: TextStyle(fontSize: 14, color: Color(0xFF475569)),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              textDirection: TextDirection.rtl,
+              decoration: const InputDecoration(
+                hintText: 'مثال: أحمد أو ahmed',
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final newName = controller.text.trim();
+              setState(() {
+                _sessionManager.contributorName = newName.isEmpty ? 'anonymous' : newName;
+              });
+              Navigator.pop(ctx);
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF065F46),
+            ),
+            child: const Text('حفظ'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -352,6 +422,8 @@ class _CollectionScreenState extends State<CollectionScreen> {
           currentIndex: _currentIndex,
           totalCount: _prompts.length,
           currentPrompt: prompt,
+          contributorName: _sessionManager.contributorName,
+          onEditContributorName: _showEditContributorNameDialog,
         ),
       ),
       body: SafeArea(

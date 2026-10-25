@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/storage/storage_service.dart';
 import '../../canvas/domain/canvas_line_recorder.dart';
+import '../data/session_manager.dart';
 import '../domain/prompt_models.dart';
 
 class UploadResult {
@@ -31,11 +32,17 @@ class UploadService {
   final String targetBucket;
   final StorageService storage;
   final SupabaseClient? customClient;
+  final String? contributorKey;
+  final String? contributorName;
+  final String? contributorUid;
 
   UploadService({
     this.targetBucket = 'alqalam-recordings',
     StorageService? storage,
     this.customClient,
+    this.contributorKey,
+    this.contributorName,
+    this.contributorUid,
   }) : storage = storage ?? StorageService.instance;
 
   SupabaseClient? get _client {
@@ -49,7 +56,7 @@ class UploadService {
 
   /// Rasterizes canonical line PNGs and uploads directly to Supabase Storage.
   ///
-  /// Target path: recordings/${writer_id}/${prompt_id}/
+  /// Target path: recordings/${contributorKey}/${writerId}/${promptId}/
   /// - line_0.png (and line_1.png if multiline) with contentType: 'image/png'
   /// - record.json with contentType: 'application/json'
   /// - fileOptions: const FileOptions(upsert: true)
@@ -59,6 +66,9 @@ class UploadService {
     required double logicalWidth,
     required double logicalHeight,
     required double dpr,
+    String? contributorKey,
+    String? contributorName,
+    String? contributorUid,
   }) async {
     final int pixelW = (logicalWidth * dpr).round();
     final int pixelH = (logicalHeight * dpr).round();
@@ -135,7 +145,18 @@ class UploadService {
       });
     }
 
-    // 2. Build record.json schema
+    // 2. Build record.json schema with contributor provenance
+    final sessionManager = SessionManager(storage: storage);
+    final resolvedContributorKey = contributorKey ??
+        this.contributorKey ??
+        sessionManager.contributorDirectoryKey;
+    final resolvedContributorName = contributorName ??
+        this.contributorName ??
+        sessionManager.contributorName;
+    final resolvedContributorUid = contributorUid ??
+        this.contributorUid ??
+        sessionManager.contributorUid;
+
     final Map<String, dynamic> recordJson = Map<String, dynamic>.from(promptItem.rawJson);
     recordJson['capture_meta'] = {
       'recorded_at_utc': DateTime.now().toUtc().toIso8601String(),
@@ -143,13 +164,17 @@ class UploadService {
       'device_pixel_ratio': dpr,
       'input_mode': primaryPointerKind,
       'primary_pointer_kind': primaryPointerKind,
+      'contributor_name': resolvedContributorName,
+      'contributor_uid': resolvedContributorUid,
     };
     recordJson['lines'] = linesData;
 
     final recordJsonString = jsonEncode(recordJson);
     final writerId = promptItem.writerId;
     final promptId = promptItem.promptId;
-    final basePath = 'recordings/$writerId/$promptId';
+
+    // Isolated per-user storage path:
+    final folderPath = 'recordings/$resolvedContributorKey/$writerId/$promptId';
 
     // 3. Upload directly to Supabase Storage bucket 'alqalam-recordings'
     try {
@@ -162,7 +187,7 @@ class UploadService {
 
       // Upload binary line PNGs
       for (final img in lineImages) {
-        final filePath = '$basePath/${img.filename}';
+        final filePath = '$folderPath/${img.filename}';
         await storageBucket.uploadBinary(
           filePath,
           img.bytes,
@@ -175,7 +200,7 @@ class UploadService {
 
       // Upload UTF-8 encoded record.json
       final recordBytes = Uint8List.fromList(utf8.encode(recordJsonString));
-      final recordPath = '$basePath/record.json';
+      final recordPath = '$folderPath/record.json';
       await storageBucket.uploadBinary(
         recordPath,
         recordBytes,
@@ -192,8 +217,8 @@ class UploadService {
       return UploadResult(
         success: true,
         statusCode: 200,
-        storagePath: basePath,
-        responseBody: 'Successfully uploaded $basePath to $targetBucket',
+        storagePath: folderPath,
+        responseBody: 'Successfully uploaded $folderPath to $targetBucket',
       );
     } catch (e) {
       // Failure: cache local copy in localStorage so data is not lost
@@ -203,7 +228,7 @@ class UploadService {
       return UploadResult(
         success: false,
         cachedLocally: true,
-        storagePath: basePath,
+        storagePath: folderPath,
         errorMessage: e.toString(),
       );
     }

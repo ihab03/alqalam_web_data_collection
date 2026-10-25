@@ -9,6 +9,8 @@ class CollectionTopBar extends StatelessWidget {
   final int totalCount;
   final PromptItem? currentPrompt;
   final int pendingUploadsCount;
+  final String? contributorName;
+  final VoidCallback? onEditContributorName;
 
   const CollectionTopBar({
     super.key,
@@ -18,6 +20,8 @@ class CollectionTopBar extends StatelessWidget {
     required this.totalCount,
     this.currentPrompt,
     this.pendingUploadsCount = 0,
+    this.contributorName,
+    this.onEditContributorName,
   });
 
   @override
@@ -81,8 +85,47 @@ class CollectionTopBar extends StatelessWidget {
                 const SizedBox(width: 8),
 
                 // Pack Type Badge
-                if (currentPrompt != null)
+                if (currentPrompt != null) ...[
                   _buildPackBadge(currentPrompt!.packType),
+                  const SizedBox(width: 8),
+                ],
+
+                // Contributor Badge
+                if (contributorName != null) ...[
+                  InkWell(
+                    onTap: onEditContributorName,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.person_outline_rounded,
+                              size: 15, color: Color(0xFF475569)),
+                          const SizedBox(width: 4),
+                          Text(
+                            contributorName!,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF334155),
+                            ),
+                          ),
+                          if (onEditContributorName != null) ...[
+                            const SizedBox(width: 4),
+                            const Icon(Icons.edit_outlined,
+                                size: 12, color: Color(0xFF94A3B8)),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
 
                 const Spacer(),
 

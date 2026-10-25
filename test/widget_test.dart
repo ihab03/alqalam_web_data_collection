@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +12,7 @@ import 'package:alqalam_web_data_collection/features/collection/domain/prompt_mo
 import 'package:alqalam_web_data_collection/features/collection/presentation/widgets/celebration_view.dart';
 import 'package:alqalam_web_data_collection/features/collection/presentation/widgets/notice_banner_widget.dart';
 import 'package:alqalam_web_data_collection/features/collection/presentation/widgets/top_bar_widget.dart';
+import 'package:alqalam_web_data_collection/features/collection/services/upload_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -122,6 +124,195 @@ void main() {
     });
   });
 
+  group('SessionManager Contributor Key and Identity Tests', () {
+    test('Generates and persists unique contributorUid in localStorage["hafs_contributor_uid"]', () {
+      expect(storage.getItem('hafs_contributor_uid'), isNull);
+      final uid = sessionManager.contributorUid;
+      expect(uid, isNotEmpty);
+      expect(storage.getItem('hafs_contributor_uid'), uid);
+
+      // Subsequent access reuses the same persisted UID
+      final uidAgain = sessionManager.contributorUid;
+      expect(uidAgain, uid);
+    });
+
+    test('Reuses pre-existing contributorUid from localStorage', () {
+      storage.setItem('hafs_contributor_uid', 'k8f2a1');
+      expect(sessionManager.contributorUid, 'k8f2a1');
+    });
+
+    test('Defaults contributorName to "anonymous" when not set', () {
+      expect(sessionManager.contributorName, 'anonymous');
+    });
+
+    test('Allows user to input and persist custom contributorName in localStorage["hafs_contributor_name"]', () {
+      sessionManager.contributorName = 'Ahmed Ali';
+      expect(sessionManager.contributorName, 'Ahmed Ali');
+      expect(storage.getItem('hafs_contributor_name'), 'Ahmed Ali');
+
+      // Empty or whitespace defaults back to anonymous
+      sessionManager.contributorName = '   ';
+      expect(sessionManager.contributorName, 'anonymous');
+    });
+
+    test('Sanitizes contributorName: lowercase, spaces to underscores, strips non-alphanumeric/Arabic characters', () {
+      // English lowercase and space replacement
+      expect(SessionManager.sanitizeContributorName('Ahmed Ali'), 'ahmed_ali');
+
+      // Arabic support
+      expect(SessionManager.sanitizeContributorName('أحمد علي'), 'أحمد_علي');
+
+      // Stripping punctuation and non-alphanumeric
+      expect(SessionManager.sanitizeContributorName('Ahmed! @#\$ 2026-Test'), 'ahmed_2026test');
+
+      // Empty / invalid name fallback to anonymous
+      expect(SessionManager.sanitizeContributorName('!@#\$%^&*()'), 'anonymous');
+    });
+
+    test('Formats contributorDirectoryKey as \${sanitizedName}_\${contributorUid}', () {
+      storage.setItem('hafs_contributor_uid', 'k8f2a1');
+      sessionManager.contributorName = 'Ahmed';
+      expect(sessionManager.contributorDirectoryKey, 'ahmed_k8f2a1');
+
+      storage.setItem('hafs_contributor_uid', '9x3m1q');
+      sessionManager.contributorName = 'anonymous';
+      expect(sessionManager.contributorDirectoryKey, 'anonymous_9x3m1q');
+
+      // Arabic name format
+      storage.setItem('hafs_contributor_uid', '7z2b4x');
+      sessionManager.contributorName = 'طارق';
+      expect(sessionManager.contributorDirectoryKey, 'طارق_7z2b4x');
+    });
+
+    test('resolveSession includes contributorDirectoryKey, contributorName, and contributorUid in result', () {
+      storage.setItem('hafs_contributor_uid', 'k8f2a1');
+      sessionManager.contributorName = 'Ahmed';
+
+      final uri = Uri.parse('https://example.com/#/?writer=w01');
+      final result = sessionManager.resolveSession(uri, mockManifest);
+
+      expect(result.contributorName, 'Ahmed');
+      expect(result.contributorUid, 'k8f2a1');
+      expect(result.contributorDirectoryKey, 'ahmed_k8f2a1');
+    });
+  });
+
+  group('UploadService Storage Path Hierarchy & Provenance Tests', () {
+    late UploadService uploadService;
+
+    setUp(() {
+      uploadService = UploadService(storage: storage);
+    });
+
+    test('Generates isolated destination folder path: recordings/\$contributorKey/\$writerId/\$promptId', () async {
+      storage.setItem('hafs_contributor_uid', 'k8f2a1');
+      sessionManager.contributorName = 'Ahmed';
+      final contributorKey = sessionManager.contributorDirectoryKey;
+
+      final promptItem = mockManifest.writers['c001']![0];
+      final recorder = CanvasLineRecorder(lineIndex: 0);
+      recorder.startStroke(10.0, 10.0, 1.0, 'stylus');
+      recorder.appendPoint(30.0, 30.0, 1.0, 'stylus');
+      recorder.endStroke();
+
+      final result = await uploadService.submitAndUploadPrompt(
+        promptItem: promptItem,
+        lineRecorders: [recorder],
+        logicalWidth: 800.0,
+        logicalHeight: 108.0,
+        dpr: 1.0,
+        contributorKey: contributorKey,
+        contributorName: 'Ahmed',
+        contributorUid: 'k8f2a1',
+      );
+
+      // Verify isolated per-user destination path
+      final expectedPath = 'recordings/ahmed_k8f2a1/c001/c001_001';
+      expect(result.storagePath, expectedPath);
+
+      // Verify cached offline payload contains contributor provenance in capture_meta
+      final cachedJsonStr = storage.getItem('hafs_pending_c001_001');
+      expect(cachedJsonStr, isNotNull);
+
+      final cachedJson = jsonDecode(cachedJsonStr!) as Map<String, dynamic>;
+      final meta = cachedJson['capture_meta'] as Map<String, dynamic>;
+
+      expect(meta['contributor_name'], 'Ahmed');
+      expect(meta['contributor_uid'], 'k8f2a1');
+      expect(meta['primary_pointer_kind'], 'stylus');
+
+      // Verify lines rasterization data
+      final lines = cachedJson['lines'] as List<dynamic>;
+      expect(lines.length, 1);
+      expect(lines[0]['png_filename'], 'line_0.png');
+    });
+
+    test('UploadService automatically defaults to sessionManager contributorKey and contributorName when omitted', () async {
+      storage.setItem('hafs_contributor_uid', '9x3m1q');
+      storage.setItem('hafs_contributor_name', 'anonymous');
+
+      final promptItem = mockManifest.writers['w01']![0];
+      final recorder = CanvasLineRecorder(lineIndex: 0);
+      recorder.startStroke(5.0, 5.0, 0.9, 'touch');
+      recorder.appendPoint(15.0, 15.0, 0.9, 'touch');
+      recorder.endStroke();
+
+      final result = await uploadService.submitAndUploadPrompt(
+        promptItem: promptItem,
+        lineRecorders: [recorder],
+        logicalWidth: 800.0,
+        logicalHeight: 108.0,
+        dpr: 1.0,
+      );
+
+      expect(result.storagePath, 'recordings/anonymous_9x3m1q/w01/w01_001');
+
+      final cachedJsonStr = storage.getItem('hafs_pending_w01_001');
+      final cachedJson = jsonDecode(cachedJsonStr!) as Map<String, dynamic>;
+      final meta = cachedJson['capture_meta'] as Map<String, dynamic>;
+
+      expect(meta['contributor_name'], 'anonymous');
+      expect(meta['contributor_uid'], '9x3m1q');
+    });
+
+    test('UploadService multi-line prompts include line_0.png and line_1.png data', () async {
+      storage.setItem('hafs_contributor_uid', 'user123');
+      storage.setItem('hafs_contributor_name', 'tester');
+
+      // c001 prompt 13 has 2 canvas lines (multiline_cross_ayah)
+      final multiPrompt = mockManifest.writers['c001']![12];
+      expect(multiPrompt.numCanvasLines, 2);
+
+      final rec0 = CanvasLineRecorder(lineIndex: 0);
+      rec0.startStroke(10.0, 10.0, 1.0, 'touch');
+      rec0.appendPoint(20.0, 20.0, 1.0, 'touch');
+      rec0.endStroke();
+
+      final rec1 = CanvasLineRecorder(lineIndex: 1);
+      rec1.startStroke(30.0, 30.0, 1.0, 'touch');
+      rec1.appendPoint(40.0, 40.0, 1.0, 'touch');
+      rec1.endStroke();
+
+      final result = await uploadService.submitAndUploadPrompt(
+        promptItem: multiPrompt,
+        lineRecorders: [rec0, rec1],
+        logicalWidth: 800.0,
+        logicalHeight: 108.0,
+        dpr: 1.0,
+      );
+
+      expect(result.storagePath, 'recordings/tester_user123/c001/${multiPrompt.promptId}');
+
+      final cachedJsonStr = storage.getItem('hafs_pending_${multiPrompt.promptId}');
+      final cachedJson = jsonDecode(cachedJsonStr!) as Map<String, dynamic>;
+      final lines = cachedJson['lines'] as List<dynamic>;
+
+      expect(lines.length, 2);
+      expect(lines[0]['png_filename'], 'line_0.png');
+      expect(lines[1]['png_filename'], 'line_1.png');
+    });
+  });
+
   group('CanvasLineRecorder Tests', () {
     test('Records stroke points with sub-millisecond timestamps, pressure, and kind', () {
       final recorder = CanvasLineRecorder(lineIndex: 0);
@@ -226,7 +417,9 @@ void main() {
       expect(contributeTapped, isTrue);
     });
 
-    testWidgets('CollectionTopBar renders badges and progress correctly', (tester) async {
+    testWidgets('CollectionTopBar renders badges and progress correctly with contributorName', (tester) async {
+      bool editTapped = false;
+
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -238,6 +431,10 @@ void main() {
                 currentIndex: 13,
                 totalCount: 15,
                 currentPrompt: mockManifest.writers['c001']![13],
+                contributorName: 'Ahmed',
+                onEditContributorName: () {
+                  editTapped = true;
+                },
               ),
             ),
           ),
@@ -247,6 +444,10 @@ void main() {
       expect(find.text('الحزمة c001'), findsOneWidget);
       expect(find.text('14 / 15'), findsOneWidget);
       expect(find.text('د: اختبار الدقة الذكي 🎯'), findsOneWidget);
+      expect(find.text('Ahmed'), findsOneWidget);
+
+      await tester.tap(find.text('Ahmed'));
+      expect(editTapped, isTrue);
     });
 
     testWidgets('HandwritingCanvasBandWidget blocks mouse events and triggers callback', (tester) async {

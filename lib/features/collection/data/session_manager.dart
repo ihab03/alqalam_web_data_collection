@@ -7,20 +7,99 @@ class SessionResolutionResult {
   final String tier; // "core_130" or "crowd_15"
   final List<PromptItem> prompts;
   final int initialPromptIndex; // 0-indexed into prompts
+  final String contributorDirectoryKey;
+  final String contributorName;
+  final String contributorUid;
 
   const SessionResolutionResult({
     required this.writerId,
     required this.tier,
     required this.prompts,
     required this.initialPromptIndex,
+    this.contributorDirectoryKey = '',
+    this.contributorName = 'anonymous',
+    this.contributorUid = '',
   });
 }
 
 class SessionManager {
+  static const String contributorUidKey = 'hafs_contributor_uid';
+  static const String contributorNameKey = 'hafs_contributor_name';
+
   final StorageService storage;
 
   SessionManager({StorageService? storage})
       : storage = storage ?? StorageService.instance;
+
+  /// Generates a unique 6-character alphanumeric contributor UID.
+  static String generateContributorUid() {
+    final ms = DateTime.now().millisecondsSinceEpoch.toRadixString(36);
+    if (ms.length >= 6) {
+      return ms.substring(ms.length - 6);
+    }
+    return ms.padLeft(6, '0');
+  }
+
+  /// Persistent user session ID stored in localStorage['hafs_contributor_uid'].
+  /// If it does not exist, generates and persists one.
+  String get contributorUid {
+    final existing = storage.getItem(contributorUidKey);
+    if (existing != null && existing.trim().isNotEmpty) {
+      return existing.trim();
+    }
+    final newUid = generateContributorUid();
+    storage.setItem(contributorUidKey, newUid);
+    return newUid;
+  }
+
+  set contributorUid(String uid) {
+    final trimmed = uid.trim();
+    if (trimmed.isNotEmpty) {
+      storage.setItem(contributorUidKey, trimmed);
+    }
+  }
+
+  void setContributorUid(String uid) => contributorUid = uid;
+
+  /// Custom contributor name, stored in localStorage['hafs_contributor_name'].
+  /// Defaults to 'anonymous' if not set or empty.
+  String get contributorName {
+    final name = storage.getItem(contributorNameKey);
+    if (name == null || name.trim().isEmpty) {
+      return 'anonymous';
+    }
+    return name.trim();
+  }
+
+  set contributorName(String name) {
+    final trimmed = name.trim();
+    storage.setItem(contributorNameKey, trimmed.isEmpty ? 'anonymous' : trimmed);
+  }
+
+  void setContributorName(String name) => contributorName = name;
+
+  /// Sanitizes contributor name: converts to lowercase, replaces spaces with
+  /// underscores, and strips non-alphanumeric and non-Arabic characters.
+  static String sanitizeContributorName(String name) {
+    String sanitized = name.trim().toLowerCase();
+    sanitized = sanitized.replaceAll(RegExp(r'\s+'), '_');
+    sanitized = sanitized.replaceAll(
+      RegExp(r'[^a-z0-9_\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]'),
+      '',
+    );
+    sanitized = sanitized.replaceAll(RegExp(r'_+'), '_').replaceAll(RegExp(r'^_+|_+$'), '');
+    if (sanitized.isEmpty) {
+      return 'anonymous';
+    }
+    return sanitized;
+  }
+
+  /// Isolated directory key for storage uploads formatted as:
+  /// "${sanitizedName}_${contributorUid}" (e.g. ahmed_k8f2a1 or anonymous_9x3m1q).
+  String get contributorDirectoryKey {
+    final sanitizedName = sanitizeContributorName(contributorName);
+    return '${sanitizedName}_$contributorUid';
+  }
 
   /// Resolves the writer ID and tier based on Section 1 & 5.1 of FLUTTER_COLLECTION_SPEC.md.
   String resolveWriterId(
@@ -92,6 +171,9 @@ class SessionManager {
       tier: tier,
       prompts: prompts,
       initialPromptIndex: startIndex,
+      contributorDirectoryKey: contributorDirectoryKey,
+      contributorName: contributorName,
+      contributorUid: contributorUid,
     );
   }
 
