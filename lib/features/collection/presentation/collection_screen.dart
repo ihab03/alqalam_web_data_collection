@@ -179,17 +179,30 @@ class _CollectionScreenState extends State<CollectionScreen> {
 
       if (!mounted) return;
 
-      if (!result.success && result.cachedLocally) {
+      if (result.success) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              '📦 تم حفظ التسجيل محلياً بنجاح وسيتم رفعه تلقائياً عند استقرار الاتصال.',
+              '✓ تم تسجيل ورفع الآية الكريمة بنجاح إلى السحابة.',
               textDirection: TextDirection.rtl,
               style: TextStyle(fontFamilyFallback: ['Amiri', 'Traditional Arabic']),
             ),
             backgroundColor: Color(0xFF065F46),
             behavior: SnackBarBehavior.floating,
-            duration: Duration(seconds: 2),
+            duration: Duration(milliseconds: 1400),
+          ),
+        );
+      } else if (result.cachedLocally) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '⚠️ تعذر الاتصال المباشر (${result.errorMessage ?? "غير متصل"}). تم حفظ التسجيل في المتصفح محلياً بأمان.',
+              textDirection: TextDirection.rtl,
+              style: const TextStyle(fontFamilyFallback: ['Amiri', 'Traditional Arabic']),
+            ),
+            backgroundColor: const Color(0xFFB45309),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
           ),
         );
       }

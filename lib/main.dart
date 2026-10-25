@@ -1,9 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/theme/app_theme.dart';
 import 'features/collection/presentation/collection_screen.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    await Supabase.initialize(
+      url: 'https://ezfuuosbmjxvgesbswfa.supabase.co',
+      // ignore: deprecated_member_use
+      anonKey: 'sb_publishable_evnrnA2UlIitRuteItJeag_9OUtvCPV',
+    );
+  } catch (e) {
+    debugPrint('Supabase initialization note: $e');
+  }
+
   runApp(const AlQalamCollectionApp());
 }
 
