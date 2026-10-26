@@ -113,70 +113,75 @@ class _HandwritingCanvasBandWidgetState
                 ],
               ),
               clipBehavior: Clip.antiAlias,
-              child: Listener(
-                behavior: HitTestBehavior.opaque,
-                onPointerDown: (PointerDownEvent event) {
-                  // Desktop Mouse Blocker (Section 3.2)
-                  if (event.kind == PointerDeviceKind.mouse) {
-                    widget.onMouseBlocked();
-                    return;
-                  }
+              child: Focus(
+                autofocus: true,
+                child: Listener(
+                  behavior: HitTestBehavior.opaque,
+                  onPointerDown: (PointerDownEvent event) {
+                    FocusScope.of(context).requestFocus();
 
-                  final kindStr = event.kind == PointerDeviceKind.stylus
-                      ? 'stylus'
-                      : 'touch';
-                  _detectedPointerKind = kindStr;
+                    // Desktop Mouse Blocker (Section 3.2)
+                    if (event.kind == PointerDeviceKind.mouse) {
+                      widget.onMouseBlocked();
+                      return;
+                    }
 
-                  final pos = event.localPosition;
-                  // Clamp y to canvas height bounds
-                  final clampedY = pos.dy.clamp(0.0, widget.height);
-                  final clampedX = pos.dx;
+                    final kindStr = event.kind == PointerDeviceKind.stylus
+                        ? 'stylus'
+                        : 'touch';
+                    _detectedPointerKind = kindStr;
 
-                  widget.recorder.startStroke(
-                    clampedX,
-                    clampedY,
-                    event.pressure > 0 ? event.pressure : 1.0,
-                    kindStr,
-                  );
-                },
-                onPointerMove: (PointerMoveEvent event) {
-                  if (event.kind == PointerDeviceKind.mouse) return;
+                    final pos = event.localPosition;
+                    // Clamp y to canvas height bounds
+                    final clampedY = pos.dy.clamp(0.0, widget.height);
+                    final clampedX = pos.dx;
 
-                  final kindStr = event.kind == PointerDeviceKind.stylus
-                      ? 'stylus'
-                      : 'touch';
-
-                  final pos = event.localPosition;
-                  final clampedY = pos.dy.clamp(0.0, widget.height);
-                  final clampedX = pos.dx;
-
-                  widget.recorder.appendPoint(
-                    clampedX,
-                    clampedY,
-                    event.pressure > 0 ? event.pressure : 1.0,
-                    kindStr,
-                  );
-                },
-                onPointerUp: (PointerUpEvent event) {
-                  if (event.kind == PointerDeviceKind.mouse) return;
-                  widget.recorder.endStroke();
-                  widget.onStrokeEnded?.call();
-                },
-                onPointerCancel: (PointerCancelEvent event) {
-                  widget.recorder.endStroke();
-                },
-                child: ListenableBuilder(
-                  listenable: widget.recorder,
-                  builder: (context, _) {
-                    return CustomPaint(
-                      painter: BandStrokesPainter(
-                        strokes: widget.recorder.strokes,
-                        currentStroke: widget.recorder.currentStroke,
-                        baselineY: 75.0,
-                      ),
-                      size: Size(widget.maxWidth, widget.height),
+                    widget.recorder.startStroke(
+                      clampedX,
+                      clampedY,
+                      event.pressure > 0 ? event.pressure : 1.0,
+                      kindStr,
                     );
                   },
+                  onPointerMove: (PointerMoveEvent event) {
+                    if (event.kind == PointerDeviceKind.mouse) return;
+
+                    final kindStr = event.kind == PointerDeviceKind.stylus
+                        ? 'stylus'
+                        : 'touch';
+
+                    final pos = event.localPosition;
+                    final clampedY = pos.dy.clamp(0.0, widget.height);
+                    final clampedX = pos.dx;
+
+                    widget.recorder.appendPoint(
+                      clampedX,
+                      clampedY,
+                      event.pressure > 0 ? event.pressure : 1.0,
+                      kindStr,
+                    );
+                  },
+                  onPointerUp: (PointerUpEvent event) {
+                    if (event.kind == PointerDeviceKind.mouse) return;
+                    widget.recorder.endStroke();
+                    widget.onStrokeEnded?.call();
+                  },
+                  onPointerCancel: (PointerCancelEvent event) {
+                    widget.recorder.endStroke();
+                  },
+                  child: ListenableBuilder(
+                    listenable: widget.recorder,
+                    builder: (context, _) {
+                      return CustomPaint(
+                        painter: BandStrokesPainter(
+                          strokes: widget.recorder.strokes,
+                          currentStroke: widget.recorder.currentStroke,
+                          baselineY: 75.0,
+                        ),
+                        size: Size(widget.maxWidth, widget.height),
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
