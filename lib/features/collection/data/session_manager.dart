@@ -78,6 +78,14 @@ class SessionManager {
 
   void setContributorName(String name) => contributorName = name;
 
+  /// Whether a valid custom contributor name has been entered (not empty and not 'anonymous').
+  bool get hasCustomContributorName {
+    final name = storage.getItem(contributorNameKey);
+    return name != null &&
+        name.trim().isNotEmpty &&
+        name.trim().toLowerCase() != 'anonymous';
+  }
+
   /// Sanitizes contributor name: converts to lowercase, replaces spaces with
   /// underscores, and strips non-alphanumeric and non-Arabic characters.
   static String sanitizeContributorName(String name) {

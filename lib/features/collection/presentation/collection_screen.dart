@@ -1,5 +1,7 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+
 import '../../canvas/domain/canvas_line_recorder.dart';
 import '../../canvas/presentation/widgets/handwriting_canvas_widget.dart';
 import '../data/manifest_repository.dart';
@@ -14,10 +16,7 @@ import 'widgets/top_bar_widget.dart';
 class CollectionScreen extends StatefulWidget {
   final Uri? initialUri;
 
-  const CollectionScreen({
-    super.key,
-    this.initialUri,
-  });
+  const CollectionScreen({super.key, this.initialUri});
 
   @override
   State<CollectionScreen> createState() => _CollectionScreenState();
@@ -42,8 +41,8 @@ class _CollectionScreenState extends State<CollectionScreen> {
 
   PromptItem? get _currentPrompt =>
       (_prompts.isNotEmpty && _currentIndex < _prompts.length)
-          ? _prompts[_currentIndex]
-          : null;
+      ? _prompts[_currentIndex]
+      : null;
 
   @override
   void initState() {
@@ -71,7 +70,8 @@ class _CollectionScreenState extends State<CollectionScreen> {
       _currentIndex = session.initialPromptIndex;
 
       // Check if all prompts were already finished prior to opening
-      final allDone = _prompts.isNotEmpty &&
+      final allDone =
+          _prompts.isNotEmpty &&
           _prompts.every((p) => _sessionManager.isPromptCompleted(p.promptId));
       _isCelebration = allDone;
 
@@ -80,6 +80,14 @@ class _CollectionScreenState extends State<CollectionScreen> {
       setState(() {
         _isLoading = false;
       });
+
+      if (!_sessionManager.hasCustomContributorName && !_isCelebration) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && !_sessionManager.hasCustomContributorName) {
+            _showContributorNameDialog(isMandatory: true);
+          }
+        });
+      }
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -136,15 +144,21 @@ class _CollectionScreenState extends State<CollectionScreen> {
     final prompt = _currentPrompt;
     if (prompt == null || _isUploading) return;
 
+    if (!_validateCanWrite()) return;
+
     // 1. Validation: Ensure canvas is not empty (at least 1 stroke with >= 2 points)
-    final bool hasValidStroke = _lineRecorders.any((rec) => rec.hasValidContent);
+    final bool hasValidStroke = _lineRecorders.any(
+      (rec) => rec.hasValidContent,
+    );
     if (!hasValidStroke) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
             '✍️ يرجى كتابة النص القرآني المعروض على اللوح قبل المتابعة.',
             textDirection: TextDirection.rtl,
-            style: TextStyle(fontFamilyFallback: ['Amiri', 'Traditional Arabic']),
+            style: TextStyle(
+              fontFamilyFallback: ['Amiri', 'Traditional Arabic'],
+            ),
           ),
           backgroundColor: Color(0xFFB45309),
           behavior: SnackBarBehavior.floating,
@@ -188,7 +202,9 @@ class _CollectionScreenState extends State<CollectionScreen> {
             content: Text(
               '✓ تم تسجيل ورفع الآية الكريمة بنجاح إلى السحابة.',
               textDirection: TextDirection.rtl,
-              style: TextStyle(fontFamilyFallback: ['Amiri', 'Traditional Arabic']),
+              style: TextStyle(
+                fontFamilyFallback: ['Amiri', 'Traditional Arabic'],
+              ),
             ),
             backgroundColor: Color(0xFF065F46),
             behavior: SnackBarBehavior.floating,
@@ -201,7 +217,9 @@ class _CollectionScreenState extends State<CollectionScreen> {
             content: Text(
               '⚠️ تعذر الاتصال المباشر (${result.errorMessage ?? "غير متصل"}). تم حفظ التسجيل في المتصفح محلياً بأمان.',
               textDirection: TextDirection.rtl,
-              style: const TextStyle(fontFamilyFallback: ['Amiri', 'Traditional Arabic']),
+              style: const TextStyle(
+                fontFamilyFallback: ['Amiri', 'Traditional Arabic'],
+              ),
             ),
             backgroundColor: const Color(0xFFB45309),
             behavior: SnackBarBehavior.floating,
@@ -245,7 +263,10 @@ class _CollectionScreenState extends State<CollectionScreen> {
   void _handleContributeMore() {
     if (_manifest == null) return;
 
-    final nextBatchId = _sessionManager.claimNextCrowdBatch(_manifest!, _writerId);
+    final nextBatchId = _sessionManager.claimNextCrowdBatch(
+      _manifest!,
+      _writerId,
+    );
     final prompts = _manifest!.getPromptsForWriter(nextBatchId) ?? [];
 
     setState(() {
@@ -258,71 +279,195 @@ class _CollectionScreenState extends State<CollectionScreen> {
     _setupLineRecordersForCurrentPrompt();
   }
 
-  /// Dialog allowing the user to view or customize their contributor display name.
-  void _showEditContributorNameDialog() {
+  bool _isNameDialogShowing = false;
+
+  /// Validates whether the user can start writing / typing.
+  /// If no name has been entered, opens the compulsory name dialog and returns false.
+  bool _validateCanWrite() {
+    if (!_sessionManager.hasCustomContributorName) {
+      _showContributorNameDialog(isMandatory: true);
+      return false;
+    }
+    return true;
+  }
+
+  /// Dialog allowing the user to view, customize, or mandatorily enter their contributor display name.
+  Future<void> _showContributorNameDialog({bool isMandatory = false}) async {
+    if (_isNameDialogShowing || !mounted) return;
+    _isNameDialogShowing = true;
+
     final currentName = _sessionManager.contributorName;
     final controller = TextEditingController(
       text: currentName == 'anonymous' ? '' : currentName,
     );
-    showDialog(
+    String? validationError;
+
+    await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.person_rounded, color: Color(0xFF065F46)),
-            SizedBox(width: 8),
-            Text(
-              'اسم المساهم',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontFamilyFallback: ['Amiri', 'Traditional Arabic'],
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'أدخل اسمك أو كنيتك ليتم حفظ مساهمتك في مجلد خاص بك باسمك في قاعدة البيانات:',
-              textDirection: TextDirection.rtl,
-              style: TextStyle(fontSize: 14, color: Color(0xFF475569)),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              textDirection: TextDirection.rtl,
-              decoration: const InputDecoration(
-                hintText: 'مثال: أحمد أو ahmed',
-                border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final newName = controller.text.trim();
-              setState(() {
-                _sessionManager.contributorName = newName.isEmpty ? 'anonymous' : newName;
+      barrierDismissible: !isMandatory,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          void submitName() {
+            final newName = controller.text.trim();
+            if (newName.isEmpty) {
+              setDialogState(() {
+                validationError = 'يرجى إدخال اسمك قبل البدء بالكتابة';
               });
-              Navigator.pop(ctx);
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF065F46),
+              return;
+            }
+            if (newName.toLowerCase() == 'anonymous') {
+              setDialogState(() {
+                validationError = 'يرجى إدخال اسمك الحقيقي';
+              });
+              return;
+            }
+            final sanitized = SessionManager.sanitizeContributorName(newName);
+            if (sanitized.isEmpty || sanitized == 'anonymous') {
+              setDialogState(() {
+                validationError = 'يرجى إدخال اسم صحيح يحتوي على حروف';
+              });
+              return;
+            }
+
+            setState(() {
+              _sessionManager.contributorName = newName;
+            });
+            Navigator.of(ctx).pop();
+          }
+
+          return PopScope(
+            canPop: !isMandatory,
+            child: AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
+                textDirection: TextDirection.rtl,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFECFDF5),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.person_rounded,
+                      color: Color(0xFF065F46),
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'اسم الكاتب / المساهم',
+                      textDirection: TextDirection.rtl,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        fontFamilyFallback: ['Amiri', 'Traditional Arabic'],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      isMandatory
+                          ? 'مرحباً بك! يرجى إدخال اسمك الكريم قبل البدء بالكتابة لحفظ وتوثيق مساهمتك باسمك في قاعدة البيانات:'
+                          : 'يمكنك تعديل اسمك لحفظ المساهمات في مجلد خاص بك باسمك في قاعدة البيانات:',
+                      textDirection: TextDirection.rtl,
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        color: Color(0xFF475569),
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: controller,
+                      autofocus: true,
+                      textDirection: TextDirection.rtl,
+                      decoration: InputDecoration(
+                        labelText: 'الاسم',
+                        hintText: 'أدخل اسمك باللغة الانجليزية',
+                        errorText: validationError,
+                        prefixIcon: const Icon(
+                          Icons.badge_outlined,
+                          color: Color(0xFF065F46),
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(
+                            color: Color(0xFF065F46),
+                            width: 2,
+                          ),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
+                      ),
+                      onChanged: (_) {
+                        if (validationError != null) {
+                          setDialogState(() {
+                            validationError = null;
+                          });
+                        }
+                      },
+                      onSubmitted: (_) => submitName(),
+                    ),
+                  ],
+                ),
+              ),
+              actionsPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 16,
+              ),
+              actions: [
+                if (!isMandatory)
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('إلغاء'),
+                  ),
+                FilledButton.icon(
+                  onPressed: submitName,
+                  icon: const Icon(Icons.check_rounded, size: 18),
+                  label: Text(
+                    isMandatory ? 'بدء الكتابة' : 'حفظ التعديل',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      fontFamilyFallback: ['Amiri', 'Traditional Arabic'],
+                    ),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF065F46),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            child: const Text('حفظ'),
-          ),
-        ],
+          );
+        },
       ),
     );
+
+    _isNameDialogShowing = false;
   }
 
   @override
@@ -361,7 +506,11 @@ class _CollectionScreenState extends State<CollectionScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.error_outline_rounded, size: 48, color: Colors.red),
+                const Icon(
+                  Icons.error_outline_rounded,
+                  size: 48,
+                  color: Colors.red,
+                ),
                 const SizedBox(height: 16),
                 Text(
                   _errorMessage!,
@@ -404,9 +553,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
 
     final prompt = _currentPrompt;
     if (prompt == null) {
-      return const Scaffold(
-        body: Center(child: Text('لا توجد مهام متاحة')),
-      );
+      return const Scaffold(body: Center(child: Text('لا توجد مهام متاحة')));
     }
 
     final anyCanUndo = _lineRecorders.any((r) => r.canUndo);
@@ -423,7 +570,9 @@ class _CollectionScreenState extends State<CollectionScreen> {
           totalCount: _prompts.length,
           currentPrompt: prompt,
           contributorName: _sessionManager.contributorName,
-          onEditContributorName: _showEditContributorNameDialog,
+          onEditContributorName: () => _showContributorNameDialog(
+            isMandatory: !_sessionManager.hasCustomContributorName,
+          ),
         ),
       ),
       body: SafeArea(
@@ -439,7 +588,10 @@ class _CollectionScreenState extends State<CollectionScreen> {
                   Align(
                     alignment: Alignment.center,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(20),
@@ -472,7 +624,10 @@ class _CollectionScreenState extends State<CollectionScreen> {
                   // Quran Prompt Text Display
                   Container(
                     margin: const EdgeInsets.symmetric(vertical: 8.0),
-                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20.0,
+                      vertical: 16.0,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(16.0),
@@ -561,6 +716,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
           lineLabel: label,
           linePromptText: lineCount > 1 ? linePromptText : null,
           onMouseBlocked: () => showMouseBlockedDialog(context),
+          onValidateCanWrite: _validateCanWrite,
           onStrokeEnded: () => setState(() {}),
         ),
       );
@@ -614,7 +770,9 @@ class _CollectionScreenState extends State<CollectionScreen> {
                         height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.5,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                         ),
                       )
                     : const Icon(Icons.arrow_forward_rounded, size: 20),

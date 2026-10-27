@@ -195,6 +195,25 @@ void main() {
       expect(result.contributorUid, 'k8f2a1');
       expect(result.contributorDirectoryKey, 'ahmed_k8f2a1');
     });
+
+    test('hasCustomContributorName correctly reflects presence of non-anonymous contributor name', () {
+      expect(sessionManager.hasCustomContributorName, isFalse);
+
+      storage.setItem('hafs_contributor_name', 'anonymous');
+      expect(sessionManager.hasCustomContributorName, isFalse);
+
+      storage.setItem('hafs_contributor_name', 'Anonymous');
+      expect(sessionManager.hasCustomContributorName, isFalse);
+
+      storage.setItem('hafs_contributor_name', '   ');
+      expect(sessionManager.hasCustomContributorName, isFalse);
+
+      sessionManager.contributorName = 'Zaid Ali';
+      expect(sessionManager.hasCustomContributorName, isTrue);
+
+      sessionManager.contributorName = 'زيد علي';
+      expect(sessionManager.hasCustomContributorName, isTrue);
+    });
   });
 
   group('UploadService Storage Path Hierarchy & Provenance Tests', () {
@@ -478,6 +497,73 @@ void main() {
       expect(mouseBlocked, isTrue);
       // Recorder must remain empty because mouse was blocked
       expect(recorder.isEmpty, isTrue);
+    });
+
+    testWidgets('HandwritingCanvasBandWidget checks onValidateCanWrite before starting stroke', (tester) async {
+      bool canWrite = false;
+      int validateCallCount = 0;
+      final recorder = CanvasLineRecorder(lineIndex: 0);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: HandwritingCanvasBandWidget(
+              recorder: recorder,
+              onMouseBlocked: () {},
+              onValidateCanWrite: () {
+                validateCallCount++;
+                return canWrite;
+              },
+            ),
+          ),
+        ),
+      );
+
+      final center = tester.getCenter(find.byType(CustomPaint).last);
+
+      // 1. Touch when canWrite is false: should block stroke
+      final touch1 = await tester.createGesture(kind: PointerDeviceKind.touch);
+      await touch1.addPointer(location: center);
+      await touch1.down(center);
+      await touch1.moveTo(Offset(center.dx + 20, center.dy + 20));
+      await tester.pump();
+      await touch1.up();
+
+      expect(validateCallCount, 1);
+      expect(recorder.isEmpty, isTrue);
+
+      // 2. Touch when canWrite is true: should record stroke
+      canWrite = true;
+      final touch2 = await tester.createGesture(kind: PointerDeviceKind.touch);
+      await touch2.addPointer(location: center);
+      await touch2.down(center);
+      await touch2.moveTo(Offset(center.dx + 20, center.dy + 20));
+      await tester.pump();
+      await touch2.up();
+
+      expect(validateCallCount, 2);
+      expect(recorder.isEmpty, isFalse);
+    });
+
+    testWidgets('CollectionTopBar renders "إدخال الاسم" when contributorName is anonymous', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            appBar: PreferredSize(
+              preferredSize: const Size.fromHeight(74.0),
+              child: CollectionTopBar(
+                writerId: 'c001',
+                tier: 'crowd_15',
+                currentIndex: 0,
+                totalCount: 15,
+                contributorName: 'anonymous',
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('إدخال الاسم'), findsOneWidget);
     });
   });
 }

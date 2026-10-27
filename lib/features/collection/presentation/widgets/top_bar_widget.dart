@@ -109,7 +109,9 @@ class CollectionTopBar extends StatelessWidget {
                               size: 15, color: Color(0xFF475569)),
                           const SizedBox(width: 4),
                           Text(
-                            contributorName!,
+                            contributorName == 'anonymous'
+                                ? 'إدخال الاسم'
+                                : contributorName!,
                             style: const TextStyle(
                               fontSize: 12.5,
                               fontWeight: FontWeight.w600,

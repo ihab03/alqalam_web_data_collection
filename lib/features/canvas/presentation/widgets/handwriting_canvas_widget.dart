@@ -17,6 +17,7 @@ class HandwritingCanvasBandWidget extends StatefulWidget {
   final String? linePromptText;
   final VoidCallback onMouseBlocked;
   final VoidCallback? onStrokeEnded;
+  final bool Function()? onValidateCanWrite;
 
   const HandwritingCanvasBandWidget({
     super.key,
@@ -27,6 +28,7 @@ class HandwritingCanvasBandWidget extends StatefulWidget {
     this.linePromptText,
     required this.onMouseBlocked,
     this.onStrokeEnded,
+    this.onValidateCanWrite,
   });
 
   @override
@@ -126,6 +128,12 @@ class _HandwritingCanvasBandWidgetState
                       return;
                     }
 
+                    // Validate if writing is permitted (e.g. compulsory contributor name check)
+                    if (widget.onValidateCanWrite != null &&
+                        !widget.onValidateCanWrite!()) {
+                      return;
+                    }
+
                     final kindStr = event.kind == PointerDeviceKind.stylus
                         ? 'stylus'
                         : 'touch';
@@ -145,6 +153,7 @@ class _HandwritingCanvasBandWidgetState
                   },
                   onPointerMove: (PointerMoveEvent event) {
                     if (event.kind == PointerDeviceKind.mouse) return;
+                    if (widget.recorder.currentStroke == null) return;
 
                     final kindStr = event.kind == PointerDeviceKind.stylus
                         ? 'stylus'
@@ -163,6 +172,7 @@ class _HandwritingCanvasBandWidgetState
                   },
                   onPointerUp: (PointerUpEvent event) {
                     if (event.kind == PointerDeviceKind.mouse) return;
+                    if (widget.recorder.currentStroke == null) return;
                     widget.recorder.endStroke();
                     widget.onStrokeEnded?.call();
                   },
