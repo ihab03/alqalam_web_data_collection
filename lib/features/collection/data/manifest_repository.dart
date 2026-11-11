@@ -16,7 +16,7 @@ class ManifestData {
 }
 
 class ManifestRepository {
-  static const String manifestAssetPath = 'assets/data/collection_manifest.json';
+  static const String manifestAssetPath = 'assets/data/collection_manifest_v2.json';
   static ManifestData? _cachedData;
 
   /// Loads and caches the collection manifest.
@@ -47,5 +47,10 @@ class ManifestRepository {
   /// Invalidate cache (primarily for tests)
   static void clearCache() {
     _cachedData = null;
+  }
+
+  /// Sets cached mock data for tests
+  static void setMockData(ManifestData? data) {
+    _cachedData = data;
   }
 }

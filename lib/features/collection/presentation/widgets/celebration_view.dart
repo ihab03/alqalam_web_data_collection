@@ -1,26 +1,47 @@
 import 'package:flutter/material.dart';
 
-/// Celebration view displayed upon concluding a batch (e.g. 15/15 for crowd or 130/130 for core).
+/// Celebration view displayed upon concluding an assigned writer slot
+/// (50 for EVAL, 15 for EVAL_SHORT, 120 for TRAIN).
 class CelebrationView extends StatelessWidget {
   final String writerId;
   final String tier;
+  final String? assignment;
   final int totalSubmitted;
-  final VoidCallback onContributeMore;
   final VoidCallback? onReviewPrompts;
 
   const CelebrationView({
     super.key,
     required this.writerId,
     required this.tier,
+    this.assignment,
     required this.totalSubmitted,
-    required this.onContributeMore,
     this.onReviewPrompts,
   });
 
+  String get _assignmentTitle {
+    if (assignment == 'EVAL' || tier == 'eval_50') {
+      return 'جلسة التقييم (EVAL)';
+    } else if (assignment == 'EVAL_SHORT' || tier == 'eval_short_15') {
+      return 'جلسة التقييم السريعة (EVAL_SHORT)';
+    } else if (assignment == 'TRAIN' || tier == 'train_120') {
+      return 'جلسة التدريب (TRAIN)';
+    }
+    return 'جلسة الكتابة';
+  }
+
+  String get _descriptionText {
+    if (assignment == 'EVAL' || tier == 'eval_50') {
+      return 'أتممتم بنجاح كامل جلسة التقييم ($totalSubmitted آية). مساهمتكم الكريمة تُسهم مباشرة في قياس دقة ونقاء نموذج الخط القرآني برواية حفص عن عاصم. جزاكم الله خير الجزاء ونفع بكم.';
+    } else if (assignment == 'EVAL_SHORT' || tier == 'eval_short_15') {
+      return 'أتممتم بنجاح كامل جلسة التقييم السريعة ($totalSubmitted آية). مساهمتكم الكريمة تُسهم مباشرة في قياس دقة ونقاء نموذج الخط القرآني برواية حفص عن عاصم. جزاكم الله خير الجزاء ونفع بكم.';
+    } else if (assignment == 'TRAIN' || tier == 'train_120') {
+      return 'أتممتم بنجاح كامل جلسة التدريب الموسعة ($totalSubmitted آية). مساهمتكم الكريمة تُسهم مباشرة في تدريب وتطوير أول نموذج ذكي للخط القرآني برواية حفص عن عاصم. جزاكم الله خير الجزاء ونفع بكم.';
+    }
+    return 'أتممتم بنجاح كامل مهام الكاتب ($totalSubmitted آية) وحُفظت مساهمتكم في قاعدة البيانات بأمان. جزاكم الله خير الجزاء ونفع بكم.';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isCrowd = tier == 'crowd_15';
-
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
@@ -75,11 +96,11 @@ class CelebrationView extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  'تم تسجيل الحزمة بنجاح',
+                Text(
+                  'تم إكمال $_assignmentTitle بنجاح',
                   textDirection: TextDirection.rtl,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF0F172A),
@@ -90,9 +111,7 @@ class CelebrationView extends StatelessWidget {
 
                 // Subtitle description
                 Text(
-                  isCrowd
-                      ? 'مساهمتكم الكريمة بكتابة $totalSubmitted آية تُسهم مباشرة في تدريب ونقاء أول مصحح ذكي لخط اليد للقرآن الكريم برواية حفص عن عاصم.'
-                      : 'أتممتم بنجاح كامل جلسة المعايرة والتدريب ($totalSubmitted آية). جزاكم الله خير الجزاء ونفع بكم.',
+                  _descriptionText,
                   textDirection: TextDirection.rtl,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
@@ -115,58 +134,42 @@ class CelebrationView extends StatelessWidget {
                   child: Row(
                     textDirection: TextDirection.rtl,
                     children: [
-                      Expanded(child: _buildStatItem('الحزمة المكتملة', writerId)),
+                      Expanded(child: _buildStatItem('الكاتب المعين', writerId)),
                       Container(width: 1, height: 32, color: const Color(0xFFCBD5E1)),
-                      Expanded(child: _buildStatItem('الآيات المكتوبة', '$totalSubmitted')),
+                      Expanded(child: _buildStatItem('النوع', assignment ?? tier)),
+                      Container(width: 1, height: 32, color: const Color(0xFFCBD5E1)),
+                      Expanded(child: _buildStatItem('الآيات المكتملة', '$totalSubmitted')),
                       Container(width: 1, height: 32, color: const Color(0xFFCBD5E1)),
                       Expanded(child: _buildStatItem('الحالة', 'مرفوعة 100%')),
                     ],
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 28),
 
-                // Prominent "Contribute 15 More" Action Button
-                SizedBox(
-                  width: double.infinity,
-                  height: 54,
-                  child: ElevatedButton.icon(
-                    onPressed: onContributeMore,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF065F46),
-                      foregroundColor: Colors.white,
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                if (onReviewPrompts != null)
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: OutlinedButton.icon(
+                      onPressed: onReviewPrompts,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF065F46),
+                        side: const BorderSide(color: Color(0xFF059669), width: 1.5),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                    ),
-                    icon: const Icon(Icons.add_circle_outline_rounded, size: 22),
-                    label: Text(
-                      isCrowd
-                          ? 'المساهمة في 15 آية إضافية'
-                          : 'المتابعة لحزمة إضافية',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        fontFamilyFallback: ['Amiri', 'Traditional Arabic'],
+                      icon: const Icon(Icons.menu_book_rounded, size: 20),
+                      label: const Text(
+                        'مراجعة الآيات السابقة',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          fontFamilyFallback: ['Amiri', 'Traditional Arabic'],
+                        ),
                       ),
                     ),
                   ),
-                ),
-
-                if (onReviewPrompts != null) ...[
-                  const SizedBox(height: 12),
-                  TextButton(
-                    onPressed: onReviewPrompts,
-                    child: const Text(
-                      'مراجعة الآيات السابقة',
-                      style: TextStyle(
-                        color: Color(0xFF64748B),
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
@@ -190,7 +193,7 @@ class CelebrationView extends StatelessWidget {
         Text(
           value,
           style: const TextStyle(
-            fontSize: 16,
+            fontSize: 15,
             color: Color(0xFF0F172A),
             fontWeight: FontWeight.bold,
           ),

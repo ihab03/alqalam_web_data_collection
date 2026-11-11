@@ -9,6 +9,7 @@ import 'package:alqalam_web_data_collection/features/canvas/presentation/widgets
 import 'package:alqalam_web_data_collection/features/collection/data/manifest_repository.dart';
 import 'package:alqalam_web_data_collection/features/collection/data/session_manager.dart';
 import 'package:alqalam_web_data_collection/features/collection/domain/prompt_models.dart';
+import 'package:alqalam_web_data_collection/features/collection/presentation/collection_screen.dart';
 import 'package:alqalam_web_data_collection/features/collection/presentation/widgets/celebration_view.dart';
 import 'package:alqalam_web_data_collection/features/collection/presentation/widgets/notice_banner_widget.dart';
 import 'package:alqalam_web_data_collection/features/collection/presentation/widgets/top_bar_widget.dart';
@@ -26,101 +27,270 @@ void main() {
     storage.clearMemoryFallback();
     sessionManager = SessionManager(storage: storage);
 
-    // Build mock manifest data
+    // Build mock manifest data for v2 (26 writer slots: e01..e03, s01..s20, t01..t03)
     final Map<String, List<PromptItem>> writers = {};
-    for (final w in ['w01', 'w02', 'w03', 'w04']) {
-      writers[w] = List.generate(
-        130,
-        (i) => PromptItem(
-          seqIndex: i + 1,
-          promptId: '${w}_${(i + 1).toString().padLeft(3, '0')}',
-          writerId: w,
-          tier: 'core_130',
-          packType: i < 25 ? 'shared_core' : 'disjoint_coverage',
-          isTrainingEligible: true,
-          numCanvasLines: 1,
-          surah: 1,
-          ayahStart: 1,
-          ayahEnd: 1,
-          gStart: 1,
-          gEnd: 4,
-          displayTextUthmani: 'بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ',
-          writtenImlai: 'بسم الله الرحمن الرحيم',
-          canonicalImlai: 'بسم الله الرحمن الرحيم',
-          linePrompts: const [],
-          rawJson: {'prompt_id': '${w}_${i + 1}'},
-        ),
+
+    // EVAL: e01..e03 (50 prompts each)
+    for (final e in ['e01', 'e02', 'e03']) {
+      writers[e] = List.generate(
+        50,
+        (i) {
+          final seq = i + 1;
+          String packType = 'disjoint_coverage';
+          int numLines = 1;
+          String? uiNotice;
+          if (seq > 25 && seq <= 35) {
+            packType = 'multiline_cross_ayah';
+            numLines = seq <= 30 ? 2 : 3;
+          } else if (seq > 35 && seq <= 40) {
+            packType = 'long_multiline';
+            numLines = 3;
+          } else if (seq > 40) {
+            packType = 'intentional_error_eval';
+            uiNotice = '🎯 اختبار دقة للذكاء الاصطناعي';
+          }
+          final linePrompts = List.generate(
+            numLines,
+            (li) => LinePrompt(
+              lineIndex: li,
+              gStart: 1,
+              gEnd: 4,
+              displayTextUthmani: 'السطر ${li + 1}',
+              writtenImlai: 'السطر ${li + 1}',
+            ),
+          );
+          return PromptItem(
+            seqIndex: seq,
+            promptId: '${e}_${seq.toString().padLeft(3, '0')}_eval',
+            writerId: e,
+            tier: 'eval_50',
+            assignment: 'EVAL',
+            packType: packType,
+            isTrainingEligible: seq <= 40,
+            numCanvasLines: numLines,
+            surah: 1,
+            ayahStart: 1,
+            ayahEnd: 1,
+            gStart: 1,
+            gEnd: 4,
+            displayTextUthmani: 'بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ',
+            writtenImlai: 'بسم الله الرحمن الرحيم',
+            canonicalImlai: 'بسم الله الرحمن الرحيم',
+            linePrompts: linePrompts,
+            uiNoticeAr: uiNotice,
+            rawJson: {
+              'seq_index': seq,
+              'prompt_id': '${e}_${seq.toString().padLeft(3, '0')}_eval',
+              'writer_id': e,
+              'tier': 'eval_50',
+              'assignment': 'EVAL',
+              'pack_type': packType,
+              'is_training_eligible': seq <= 40,
+              'num_canvas_lines': numLines,
+            },
+          );
+        },
       );
     }
-    for (int c = 1; c <= 100; c++) {
-      final cid = 'c${c.toString().padLeft(3, '0')}';
-      writers[cid] = List.generate(
+
+    // EVAL_SHORT: s01..s20 (15 prompts each)
+    for (int s = 1; s <= 20; s++) {
+      final sid = 's${s.toString().padLeft(2, '0')}';
+      writers[sid] = List.generate(
         15,
-        (i) => PromptItem(
-          seqIndex: i + 1,
-          promptId: '${cid}_${(i + 1).toString().padLeft(3, '0')}',
-          writerId: cid,
-          tier: 'crowd_15',
-          packType: i < 3 ? 'shared_core' : (i < 12 ? 'disjoint_coverage' : (i == 12 ? 'multiline_cross_ayah' : 'intentional_error_eval')),
-          isTrainingEligible: i < 13,
-          numCanvasLines: i == 12 ? 2 : 1,
-          surah: 1,
-          ayahStart: 1,
-          ayahEnd: 1,
-          gStart: 1,
-          gEnd: 4,
-          displayTextUthmani: 'ٱلْحَمْدُ لِلَّهِ رَبِّ ٱلْعَـٰلَمِينَ',
-          writtenImlai: 'الحمد لله رب العالمين',
-          canonicalImlai: 'الحمد لله رب العالمين',
-          linePrompts: const [],
-          uiNoticeAr: i >= 13 ? '🎯 اختبار دقة للذكاء الاصطناعي' : null,
-          rawJson: {'prompt_id': '${cid}_${i + 1}'},
-        ),
+        (i) {
+          final seq = i + 1;
+          String packType = 'disjoint_coverage';
+          int numLines = 1;
+          String? uiNotice;
+          if (seq == 7) {
+            packType = 'multiline_cross_ayah';
+            numLines = 2;
+          } else if (seq == 8) {
+            packType = 'multiline_cross_ayah';
+            numLines = 3;
+          } else if (seq == 9 || seq == 10) {
+            packType = 'long_multiline';
+            numLines = 3;
+          } else if (seq >= 11) {
+            packType = 'intentional_error_eval';
+            uiNotice = '🎯 اختبار دقة للذكاء الاصطناعي';
+          }
+          final linePrompts = List.generate(
+            numLines,
+            (li) => LinePrompt(
+              lineIndex: li,
+              gStart: 1,
+              gEnd: 4,
+              displayTextUthmani: 'السطر ${li + 1}',
+              writtenImlai: 'السطر ${li + 1}',
+            ),
+          );
+          return PromptItem(
+            seqIndex: seq,
+            promptId: '${sid}_${seq.toString().padLeft(3, '0')}_short',
+            writerId: sid,
+            tier: 'eval_short_15',
+            assignment: 'EVAL_SHORT',
+            packType: packType,
+            isTrainingEligible: seq <= 10,
+            numCanvasLines: numLines,
+            surah: 1,
+            ayahStart: 1,
+            ayahEnd: 1,
+            gStart: 1,
+            gEnd: 4,
+            displayTextUthmani: 'ٱلْحَمْدُ لِلَّهِ رَبِّ ٱلْعَـٰلَمِينَ',
+            writtenImlai: 'الحمد لله رب العالمين',
+            canonicalImlai: 'الحمد لله رب العالمين',
+            linePrompts: linePrompts,
+            uiNoticeAr: uiNotice,
+            rawJson: {
+              'seq_index': seq,
+              'prompt_id': '${sid}_${seq.toString().padLeft(3, '0')}_short',
+              'writer_id': sid,
+              'tier': 'eval_short_15',
+              'assignment': 'EVAL_SHORT',
+              'pack_type': packType,
+              'is_training_eligible': seq <= 10,
+              'num_canvas_lines': numLines,
+            },
+          );
+        },
+      );
+    }
+
+    // TRAIN: t01..t03 (120 prompts each)
+    for (final t in ['t01', 't02', 't03']) {
+      writers[t] = List.generate(
+        120,
+        (i) {
+          final seq = i + 1;
+          final isMulti = seq > 100;
+          final numLines = isMulti ? (seq <= 110 ? 2 : 3) : 1;
+          final packType = isMulti ? 'multiline_cross_ayah' : 'disjoint_coverage';
+          final linePrompts = List.generate(
+            numLines,
+            (li) => LinePrompt(
+              lineIndex: li,
+              gStart: 1,
+              gEnd: 4,
+              displayTextUthmani: 'السطر ${li + 1}',
+              writtenImlai: 'السطر ${li + 1}',
+            ),
+          );
+          return PromptItem(
+            seqIndex: seq,
+            promptId: '${t}_${seq.toString().padLeft(3, '0')}_train',
+            writerId: t,
+            tier: 'train_120',
+            assignment: 'TRAIN',
+            packType: packType,
+            isTrainingEligible: true,
+            numCanvasLines: numLines,
+            surah: 2,
+            ayahStart: seq,
+            ayahEnd: seq,
+            gStart: 1,
+            gEnd: 4,
+            displayTextUthmani: 'ذَٰلِكَ ٱلْكِتَٰبُ لَا رَيْبَ ۛ فِيهِ',
+            writtenImlai: 'ذلك الكتاب لا ريب فيه',
+            canonicalImlai: 'ذلك الكتاب لا ريب فيه',
+            linePrompts: linePrompts,
+            uiNoticeAr: null,
+            rawJson: {
+              'seq_index': seq,
+              'prompt_id': '${t}_${seq.toString().padLeft(3, '0')}_train',
+              'writer_id': t,
+              'tier': 'train_120',
+              'assignment': 'TRAIN',
+              'pack_type': packType,
+              'is_training_eligible': true,
+              'num_canvas_lines': numLines,
+            },
+          );
+        },
       );
     }
 
     mockManifest = ManifestData(metadata: {}, writers: writers);
+    ManifestRepository.setMockData(mockManifest);
   });
 
-  group('SessionManager Two-Tier Routing Tests', () {
-    test('Tier 1: ?writer=w01 routes to w01 and core_130 tier', () {
-      final uri = Uri.parse('https://example.com/#/?writer=w01');
+  tearDown(() {
+    ManifestRepository.clearCache();
+  });
+
+  group('SessionManager Strict Query Parameter Routing (v2 Named Slots)', () {
+    test('?writer=e01 routes strictly to e01, eval_50 tier, EVAL assignment (50 prompts)', () {
+      final uri = Uri.parse('https://example.com/#/?writer=e01');
       final result = sessionManager.resolveSession(uri, mockManifest);
 
-      expect(result.writerId, 'w01');
-      expect(result.tier, 'core_130');
-      expect(result.prompts.length, 130);
+      expect(result, isNotNull);
+      expect(result!.writerId, 'e01');
+      expect(result.tier, 'eval_50');
+      expect(result.assignment, 'EVAL');
+      expect(result.prompts.length, 50);
       expect(result.initialPromptIndex, 0);
     });
 
-    test('Tier 1: auto-resumes at the lowest incomplete seq_index', () {
-      // Mark prompts 1, 2, 3 complete
-      sessionManager.markPromptCompleted('w02_001');
-      sessionManager.markPromptCompleted('w02_002');
-      sessionManager.markPromptCompleted('w02_003');
-
-      final uri = Uri.parse('https://example.com/#/?writer=w02');
+    test('?writer=s03 routes strictly to s03, eval_short_15 tier, EVAL_SHORT assignment (15 prompts)', () {
+      final uri = Uri.parse('https://example.com/?writer=s03');
       final result = sessionManager.resolveSession(uri, mockManifest);
 
-      expect(result.writerId, 'w02');
-      expect(result.initialPromptIndex, 3); // 0-indexed, so seq_index = 4
-    });
-
-    test('Tier 2: no writer param auto-claims first unclaimed crowd batch (c001)', () {
-      final uri = Uri.parse('https://example.com/#/');
-      final result = sessionManager.resolveSession(uri, mockManifest);
-
-      expect(result.writerId, 'c001');
-      expect(result.tier, 'crowd_15');
+      expect(result, isNotNull);
+      expect(result!.writerId, 's03');
+      expect(result.tier, 'eval_short_15');
+      expect(result.assignment, 'EVAL_SHORT');
       expect(result.prompts.length, 15);
       expect(result.initialPromptIndex, 0);
     });
 
-    test('Tier 2: marks batch complete and claims next batch (c002)', () {
-      final nextBatch = sessionManager.claimNextCrowdBatch(mockManifest, 'c001');
-      expect(nextBatch, 'c002');
-      expect(storage.getItem('hafs_batch_done_c001'), 'true');
-      expect(storage.getItem('hafs_current_crowd_batch'), 'c002');
+    test('?writer=t02 routes strictly to t02, train_120 tier, TRAIN assignment (120 prompts)', () {
+      final uri = Uri.parse('https://example.com/#/?writer=t02');
+      final result = sessionManager.resolveSession(uri, mockManifest);
+
+      expect(result, isNotNull);
+      expect(result!.writerId, 't02');
+      expect(result.tier, 'train_120');
+      expect(result.assignment, 'TRAIN');
+      expect(result.prompts.length, 120);
+      expect(result.initialPromptIndex, 0);
+    });
+
+    test('Missing ?writer query parameter returns null (no auto-claim)', () {
+      final uri = Uri.parse('https://example.com/#/');
+      final result = sessionManager.resolveSession(uri, mockManifest);
+
+      expect(result, isNull);
+    });
+
+    test('Unknown or invalid writer parameter returns null (no auto-assignment)', () {
+      final invalidUris = [
+        Uri.parse('https://example.com/#/?writer=w01'), // Old v1 slot
+        Uri.parse('https://example.com/#/?writer=c001'), // Old crowd slot
+        Uri.parse('https://example.com/#/?writer=xyz'),
+        Uri.parse('https://example.com/?writer='),
+      ];
+
+      for (final u in invalidUris) {
+        final result = sessionManager.resolveSession(u, mockManifest);
+        expect(result, isNull, reason: 'URI $u should yield null session');
+      }
+    });
+
+    test('Auto-resumes at the lowest incomplete seq_index', () {
+      // Mark prompts 1, 2, 3 complete for e02
+      sessionManager.markPromptCompleted('e02_001_eval');
+      sessionManager.markPromptCompleted('e02_002_eval');
+      sessionManager.markPromptCompleted('e02_003_eval');
+
+      final uri = Uri.parse('https://example.com/#/?writer=e02');
+      final result = sessionManager.resolveSession(uri, mockManifest);
+
+      expect(result, isNotNull);
+      expect(result!.writerId, 'e02');
+      expect(result.initialPromptIndex, 3); // 0-indexed, so seq_index = 4
     });
   });
 
@@ -156,16 +326,9 @@ void main() {
     });
 
     test('Sanitizes contributorName: lowercase, spaces to underscores, strips non-alphanumeric/Arabic characters', () {
-      // English lowercase and space replacement
       expect(SessionManager.sanitizeContributorName('Ahmed Ali'), 'ahmed_ali');
-
-      // Arabic support
       expect(SessionManager.sanitizeContributorName('أحمد علي'), 'أحمد_علي');
-
-      // Stripping punctuation and non-alphanumeric
       expect(SessionManager.sanitizeContributorName('Ahmed! @#\$ 2026-Test'), 'ahmed_2026test');
-
-      // Empty / invalid name fallback to anonymous
       expect(SessionManager.sanitizeContributorName('!@#\$%^&*()'), 'anonymous');
     });
 
@@ -178,7 +341,6 @@ void main() {
       sessionManager.contributorName = 'anonymous';
       expect(sessionManager.contributorDirectoryKey, 'anonymous_9x3m1q');
 
-      // Arabic name format
       storage.setItem('hafs_contributor_uid', '7z2b4x');
       sessionManager.contributorName = 'طارق';
       expect(sessionManager.contributorDirectoryKey, 'طارق_7z2b4x');
@@ -188,10 +350,11 @@ void main() {
       storage.setItem('hafs_contributor_uid', 'k8f2a1');
       sessionManager.contributorName = 'Ahmed';
 
-      final uri = Uri.parse('https://example.com/#/?writer=w01');
+      final uri = Uri.parse('https://example.com/#/?writer=e01');
       final result = sessionManager.resolveSession(uri, mockManifest);
 
-      expect(result.contributorName, 'Ahmed');
+      expect(result, isNotNull);
+      expect(result!.contributorName, 'Ahmed');
       expect(result.contributorUid, 'k8f2a1');
       expect(result.contributorDirectoryKey, 'ahmed_k8f2a1');
     });
@@ -216,19 +379,23 @@ void main() {
     });
   });
 
-  group('UploadService Storage Path Hierarchy & Provenance Tests', () {
+  group('UploadService Multi-Band and v2 record.json Echo Tests', () {
     late UploadService uploadService;
 
     setUp(() {
       uploadService = UploadService(storage: storage);
     });
 
-    test('Generates isolated destination folder path: recordings/\$contributorKey/\$writerId/\$promptId', () async {
+    test('Single-band prompt (num_canvas_lines = 1) generates line_0.png and echoes v2 manifest fields', () async {
       storage.setItem('hafs_contributor_uid', 'k8f2a1');
       sessionManager.contributorName = 'Ahmed';
       final contributorKey = sessionManager.contributorDirectoryKey;
 
-      final promptItem = mockManifest.writers['c001']![0];
+      final promptItem = mockManifest.writers['e01']![0]; // seq 1: disjoint_coverage, 1 band
+      expect(promptItem.numCanvasLines, 1);
+      expect(promptItem.assignment, 'EVAL');
+      expect(promptItem.tier, 'eval_50');
+
       final recorder = CanvasLineRecorder(lineIndex: 0);
       recorder.startStroke(10.0, 10.0, 1.0, 'stylus');
       recorder.appendPoint(30.0, 30.0, 1.0, 'stylus');
@@ -245,62 +412,40 @@ void main() {
         contributorUid: 'k8f2a1',
       );
 
-      // Verify isolated per-user destination path
-      final expectedPath = 'recordings/ahmed_k8f2a1/c001/c001_001';
+      final expectedPath = 'recordings/ahmed_k8f2a1/e01/${promptItem.promptId}';
       expect(result.storagePath, expectedPath);
 
-      // Verify cached offline payload contains contributor provenance in capture_meta
-      final cachedJsonStr = storage.getItem('hafs_pending_c001_001');
+      final cachedJsonStr = storage.getItem('hafs_pending_${promptItem.promptId}');
       expect(cachedJsonStr, isNotNull);
 
       final cachedJson = jsonDecode(cachedJsonStr!) as Map<String, dynamic>;
-      final meta = cachedJson['capture_meta'] as Map<String, dynamic>;
 
+      // v2 manifest echo check
+      expect(cachedJson['assignment'], 'EVAL');
+      expect(cachedJson['tier'], 'eval_50');
+      expect(cachedJson['pack_type'], 'disjoint_coverage');
+
+      // capture_meta check
+      final meta = cachedJson['capture_meta'] as Map<String, dynamic>;
       expect(meta['contributor_name'], 'Ahmed');
       expect(meta['contributor_uid'], 'k8f2a1');
       expect(meta['primary_pointer_kind'], 'stylus');
 
-      // Verify lines rasterization data
+      // lines rasterization check: exactly 1 line
       final lines = cachedJson['lines'] as List<dynamic>;
       expect(lines.length, 1);
       expect(lines[0]['png_filename'], 'line_0.png');
+      expect(lines[0]['canvas_height_logical'], 108.0);
     });
 
-    test('UploadService automatically defaults to sessionManager contributorKey and contributorName when omitted', () async {
-      storage.setItem('hafs_contributor_uid', '9x3m1q');
-      storage.setItem('hafs_contributor_name', 'anonymous');
-
-      final promptItem = mockManifest.writers['w01']![0];
-      final recorder = CanvasLineRecorder(lineIndex: 0);
-      recorder.startStroke(5.0, 5.0, 0.9, 'touch');
-      recorder.appendPoint(15.0, 15.0, 0.9, 'touch');
-      recorder.endStroke();
-
-      final result = await uploadService.submitAndUploadPrompt(
-        promptItem: promptItem,
-        lineRecorders: [recorder],
-        logicalWidth: 800.0,
-        logicalHeight: 108.0,
-        dpr: 1.0,
-      );
-
-      expect(result.storagePath, 'recordings/anonymous_9x3m1q/w01/w01_001');
-
-      final cachedJsonStr = storage.getItem('hafs_pending_w01_001');
-      final cachedJson = jsonDecode(cachedJsonStr!) as Map<String, dynamic>;
-      final meta = cachedJson['capture_meta'] as Map<String, dynamic>;
-
-      expect(meta['contributor_name'], 'anonymous');
-      expect(meta['contributor_uid'], '9x3m1q');
-    });
-
-    test('UploadService multi-line prompts include line_0.png and line_1.png data', () async {
+    test('3-Band long_multiline prompt generates line_0.png, line_1.png, line_2.png', () async {
       storage.setItem('hafs_contributor_uid', 'user123');
       storage.setItem('hafs_contributor_name', 'tester');
 
-      // c001 prompt 13 has 2 canvas lines (multiline_cross_ayah)
-      final multiPrompt = mockManifest.writers['c001']![12];
-      expect(multiPrompt.numCanvasLines, 2);
+      // e01 item 36 is long_multiline (3 lines)
+      final promptItem = mockManifest.writers['e01']![35];
+      expect(promptItem.numCanvasLines, 3);
+      expect(promptItem.packType, 'long_multiline');
 
       final rec0 = CanvasLineRecorder(lineIndex: 0);
       rec0.startStroke(10.0, 10.0, 1.0, 'touch');
@@ -312,23 +457,36 @@ void main() {
       rec1.appendPoint(40.0, 40.0, 1.0, 'touch');
       rec1.endStroke();
 
+      final rec2 = CanvasLineRecorder(lineIndex: 2);
+      rec2.startStroke(50.0, 50.0, 1.0, 'touch');
+      rec2.appendPoint(60.0, 60.0, 1.0, 'touch');
+      rec2.endStroke();
+
       final result = await uploadService.submitAndUploadPrompt(
-        promptItem: multiPrompt,
-        lineRecorders: [rec0, rec1],
-        logicalWidth: 800.0,
+        promptItem: promptItem,
+        lineRecorders: [rec0, rec1, rec2],
+        logicalWidth: 840.0,
         logicalHeight: 108.0,
         dpr: 1.0,
       );
 
-      expect(result.storagePath, 'recordings/tester_user123/c001/${multiPrompt.promptId}');
+      expect(result.storagePath, 'recordings/tester_user123/e01/${promptItem.promptId}');
 
-      final cachedJsonStr = storage.getItem('hafs_pending_${multiPrompt.promptId}');
+      final cachedJsonStr = storage.getItem('hafs_pending_${promptItem.promptId}');
       final cachedJson = jsonDecode(cachedJsonStr!) as Map<String, dynamic>;
-      final lines = cachedJson['lines'] as List<dynamic>;
 
-      expect(lines.length, 2);
+      expect(cachedJson['assignment'], 'EVAL');
+      expect(cachedJson['tier'], 'eval_50');
+      expect(cachedJson['pack_type'], 'long_multiline');
+
+      final lines = cachedJson['lines'] as List<dynamic>;
+      expect(lines.length, 3);
       expect(lines[0]['png_filename'], 'line_0.png');
       expect(lines[1]['png_filename'], 'line_1.png');
+      expect(lines[2]['png_filename'], 'line_2.png');
+      expect(lines[0]['canvas_height_logical'], 108.0);
+      expect(lines[1]['canvas_height_logical'], 108.0);
+      expect(lines[2]['canvas_height_logical'], 108.0);
     });
   });
 
@@ -410,18 +568,19 @@ void main() {
       expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
     });
 
-    testWidgets('CelebrationView displays congratulations and Contribute 15 More button', (tester) async {
-      bool contributeTapped = false;
+    testWidgets('CelebrationView displays congratulations without Contribute 15 More button', (tester) async {
+      bool reviewTapped = false;
 
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             body: CelebrationView(
-              writerId: 'c001',
-              tier: 'crowd_15',
-              totalSubmitted: 15,
-              onContributeMore: () {
-                contributeTapped = true;
+              writerId: 'e01',
+              tier: 'eval_50',
+              assignment: 'EVAL',
+              totalSubmitted: 50,
+              onReviewPrompts: () {
+                reviewTapped = true;
               },
             ),
           ),
@@ -429,27 +588,33 @@ void main() {
       );
 
       expect(find.text('جزاكم الله خيراً!'), findsOneWidget);
-      expect(find.text('تم تسجيل الحزمة بنجاح'), findsOneWidget);
-      expect(find.text('المساهمة في 15 آية إضافية'), findsOneWidget);
+      expect(find.text('تم إكمال جلسة التقييم (EVAL) بنجاح'), findsOneWidget);
+      expect(find.text('مراجعة الآيات السابقة'), findsOneWidget);
 
-      await tester.tap(find.text('المساهمة في 15 آية إضافية'));
-      expect(contributeTapped, isTrue);
+      // Verify "Contribute 15 More" does NOT exist
+      expect(find.text('المساهمة في 15 آية إضافية'), findsNothing);
+
+      await tester.ensureVisible(find.text('مراجعة الآيات السابقة'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('مراجعة الآيات السابقة'));
+      expect(reviewTapped, isTrue);
     });
 
-    testWidgets('CollectionTopBar renders badges and progress correctly with contributorName', (tester) async {
+    testWidgets('CollectionTopBar renders badges and progress correctly with writer slot and assignment', (tester) async {
       bool editTapped = false;
 
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             appBar: PreferredSize(
-              preferredSize: const Size.fromHeight(74.0),
+              preferredSize: const Size.fromHeight(80.0),
               child: CollectionTopBar(
-                writerId: 'c001',
-                tier: 'crowd_15',
-                currentIndex: 13,
-                totalCount: 15,
-                currentPrompt: mockManifest.writers['c001']![13],
+                writerId: 'e01',
+                tier: 'eval_50',
+                assignment: 'EVAL',
+                currentIndex: 35,
+                totalCount: 50,
+                currentPrompt: mockManifest.writers['e01']![35], // long_multiline
                 contributorName: 'Ahmed',
                 onEditContributorName: () {
                   editTapped = true;
@@ -460,9 +625,10 @@ void main() {
         ),
       );
 
-      expect(find.text('الحزمة c001'), findsOneWidget);
-      expect(find.text('14 / 15'), findsOneWidget);
-      expect(find.text('د: اختبار الدقة الذكي 🎯'), findsOneWidget);
+      expect(find.text('الكاتب e01'), findsOneWidget);
+      expect(find.text('تقييم'), findsOneWidget);
+      expect(find.text('36 / 50'), findsOneWidget);
+      expect(find.text('هـ: أسطر طويلة'), findsOneWidget);
       expect(find.text('Ahmed'), findsOneWidget);
 
       await tester.tap(find.text('Ahmed'));
@@ -550,10 +716,11 @@ void main() {
         MaterialApp(
           home: Scaffold(
             appBar: PreferredSize(
-              preferredSize: const Size.fromHeight(74.0),
+              preferredSize: const Size.fromHeight(80.0),
               child: CollectionTopBar(
-                writerId: 'c001',
-                tier: 'crowd_15',
+                writerId: 's01',
+                tier: 'eval_short_15',
+                assignment: 'EVAL_SHORT',
                 currentIndex: 0,
                 totalCount: 15,
                 contributorName: 'anonymous',
@@ -564,6 +731,59 @@ void main() {
       );
 
       expect(find.text('إدخال الاسم'), findsOneWidget);
+    });
+  });
+
+  group('CollectionScreen V2 Integration Tests', () {
+    testWidgets('Shows "رابط غير صالح أو مفقود" error screen when writer param is missing', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CollectionScreen(
+            initialUri: Uri.parse('https://example.com/#/'),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.text('رابط غير صالح أو مفقود'), findsOneWidget);
+      expect(find.byIcon(Icons.link_off_rounded), findsOneWidget);
+      expect(find.textContaining('e01 – e03'), findsOneWidget);
+    });
+
+    testWidgets('Shows "رابط غير صالح أو مفقود" error screen when writer param is an old v1 or unknown slot', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CollectionScreen(
+            initialUri: Uri.parse('https://example.com/#/?writer=w01'),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.text('رابط غير صالح أو مفقود'), findsOneWidget);
+      expect(find.byIcon(Icons.link_off_rounded), findsOneWidget);
+    });
+
+    testWidgets('Loads prompts correctly when valid ?writer=e01 is provided', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CollectionScreen(
+            initialUri: Uri.parse('https://example.com/#/?writer=e01'),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Should display top bar with e01 writer badge and 1 / 50 progress
+      expect(find.text('الكاتب e01'), findsOneWidget);
+      expect(find.text('1 / 50'), findsOneWidget);
+      expect(find.text('إرسال والتالي'), findsOneWidget);
     });
   });
 }

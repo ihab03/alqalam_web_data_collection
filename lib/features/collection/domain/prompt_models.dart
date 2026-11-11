@@ -40,6 +40,7 @@ class PromptItem {
   final String promptId;
   final String writerId;
   final String tier;
+  final String assignment;
   final String packType;
   final bool isTrainingEligible;
   final int numCanvasLines;
@@ -61,6 +62,7 @@ class PromptItem {
     required this.promptId,
     required this.writerId,
     required this.tier,
+    required this.assignment,
     required this.packType,
     required this.isTrainingEligible,
     required this.numCanvasLines,
@@ -89,6 +91,7 @@ class PromptItem {
       promptId: json['prompt_id'] as String? ?? '',
       writerId: json['writer_id'] as String? ?? '',
       tier: json['tier'] as String? ?? '',
+      assignment: json['assignment'] as String? ?? '',
       packType: json['pack_type'] as String? ?? '',
       isTrainingEligible: json['is_training_eligible'] as bool? ?? true,
       numCanvasLines: (json['num_canvas_lines'] as num?)?.toInt() ?? 1,
@@ -107,6 +110,30 @@ class PromptItem {
     );
   }
 
+  Map<String, dynamic> toJson() {
+    final map = Map<String, dynamic>.from(rawJson);
+    map['seq_index'] = seqIndex;
+    map['prompt_id'] = promptId;
+    map['writer_id'] = writerId;
+    map['tier'] = tier;
+    map['assignment'] = assignment;
+    map['pack_type'] = packType;
+    map['is_training_eligible'] = isTrainingEligible;
+    map['num_canvas_lines'] = numCanvasLines;
+    map['surah'] = surah;
+    map['ayah_start'] = ayahStart;
+    map['ayah_end'] = ayahEnd;
+    map['g_start'] = gStart;
+    map['g_end'] = gEnd;
+    map['display_text_uthmani'] = displayTextUthmani;
+    map['written_imlai'] = writtenImlai;
+    map['canonical_imlai'] = canonicalImlai;
+    map['line_prompts'] = linePrompts.map((l) => l.toJson()).toList();
+    map['error_meta'] = errorMeta;
+    map['ui_notice_ar'] = uiNoticeAr;
+    return map;
+  }
+
   /// User-friendly Arabic pack name for badges
   String get packLabelArabic {
     switch (packType) {
@@ -118,6 +145,8 @@ class PromptItem {
         return 'الحزمة ج: الأسطر المتعددة';
       case 'intentional_error_eval':
         return 'الحزمة د: اختبار الدقة الذكي';
+      case 'long_multiline':
+        return 'الحزمة هـ: الأسطر الطويلة';
       default:
         return 'الحزمة: $packType';
     }

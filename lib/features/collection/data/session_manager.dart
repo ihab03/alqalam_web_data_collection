@@ -4,7 +4,8 @@ import 'manifest_repository.dart';
 
 class SessionResolutionResult {
   final String writerId;
-  final String tier; // "core_130" or "crowd_15"
+  final String tier; // "eval_50", "eval_short_15", "train_120"
+  final String assignment; // "EVAL", "EVAL_SHORT", "TRAIN"
   final List<PromptItem> prompts;
   final int initialPromptIndex; // 0-indexed into prompts
   final String contributorDirectoryKey;
@@ -14,6 +15,7 @@ class SessionResolutionResult {
   const SessionResolutionResult({
     required this.writerId,
     required this.tier,
+    required this.assignment,
     required this.prompts,
     required this.initialPromptIndex,
     this.contributorDirectoryKey = '',
@@ -109,55 +111,68 @@ class SessionManager {
     return '${sanitizedName}_$contributorUid';
   }
 
-  /// Resolves the writer ID and tier based on Section 1 & 5.1 of FLUTTER_COLLECTION_SPEC.md.
-  String resolveWriterId(
+  /// Extracts the writer parameter from the URL, handling both standard query
+  /// parameters and hash fragment query parameters (e.g. ?writer=e01 or /#/?writer=e01).
+  static String? extractWriterParam(Uri uri) {
+    String? writerParam = uri.queryParameters['writer']?.trim().toLowerCase();
+    if (writerParam != null && writerParam.isNotEmpty) {
+      return writerParam;
+    }
+    if (uri.fragment.isNotEmpty) {
+      final fragment = uri.fragment;
+      final questionIndex = fragment.indexOf('?');
+      if (questionIndex != -1) {
+        final queryStr = fragment.substring(questionIndex + 1);
+        final fragmentQuery = Uri.splitQueryString(queryStr);
+        writerParam = fragmentQuery['writer']?.trim().toLowerCase();
+        if (writerParam != null && writerParam.isNotEmpty) {
+          return writerParam;
+        }
+      } else {
+        final fragmentUri = Uri.tryParse(fragment);
+        writerParam = fragmentUri?.queryParameters['writer']?.trim().toLowerCase();
+        if (writerParam != null && writerParam.isNotEmpty) {
+          return writerParam;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Resolves the writer ID based on Section 1 & 5.1 of flutter_collection_spec_v2.md.
+  ///
+  /// v2 has named slots only (26 keys: e01..e03, s01..s20, t01..t03).
+  /// If ?writer is missing, empty, or not found in manifest.writers, returns null.
+  /// Never auto-assigns or falls back to crowd batches.
+  String? resolveWriterId(
     Uri uri,
     ManifestData manifest,
   ) {
-    // 1. Check URL query parameters (e.g. ?writer=w02 or /#/?writer=w02)
-    String? writerParam = uri.queryParameters['writer']?.toLowerCase();
-    if (writerParam == null && uri.fragment.isNotEmpty) {
-      final fragmentUri = Uri.tryParse(uri.fragment);
-      writerParam = fragmentUri?.queryParameters['writer']?.toLowerCase();
+    final writerParam = extractWriterParam(uri);
+    if (writerParam != null && manifest.hasWriter(writerParam)) {
+      return writerParam;
     }
-
-    if (writerParam != null && writerParam.isNotEmpty) {
-      if (manifest.hasWriter(writerParam)) {
-        return writerParam; // Tier 1 Core writer (w01..w04)
-      }
-    }
-
-    // 2. Check localStorage for existing claimed Crowd batch
-    final storedBatch = storage.getItem('hafs_current_crowd_batch');
-    if (storedBatch != null && manifest.hasWriter(storedBatch)) {
-      final isDone = storage.getItem('hafs_batch_done_$storedBatch') == 'true';
-      if (!isDone) {
-        return storedBatch;
-      }
-    }
-
-    // 3. Auto-claim first available crowd batch (c001..c100)
-    for (int i = 1; i <= 100; i++) {
-      final batchId = 'c${i.toString().padLeft(3, '0')}';
-      final isDone = storage.getItem('hafs_batch_done_$batchId') == 'true';
-      if (!isDone && manifest.hasWriter(batchId)) {
-        storage.setItem('hafs_current_crowd_batch', batchId);
-        return batchId;
-      }
-    }
-
-    return 'c001'; // Fallback
+    return null;
   }
 
   /// Resolves full session state including starting index at the lowest incomplete seq_index.
-  SessionResolutionResult resolveSession(
+  /// Returns null if the writer link is missing or invalid.
+  SessionResolutionResult? resolveSession(
     Uri uri,
     ManifestData manifest,
   ) {
     final writerId = resolveWriterId(uri, manifest);
+    if (writerId == null) {
+      return null;
+    }
+
     final prompts = manifest.getPromptsForWriter(writerId) ?? [];
-    final isCore = writerId.startsWith('w');
-    final tier = isCore ? 'core_130' : 'crowd_15';
+    if (prompts.isEmpty) {
+      return null;
+    }
+
+    final tier = prompts.first.tier;
+    final assignment = prompts.first.assignment;
 
     // Auto-resume: lowest incomplete seq_index
     int startIndex = 0;
@@ -177,6 +192,7 @@ class SessionManager {
     return SessionResolutionResult(
       writerId: writerId,
       tier: tier,
+      assignment: assignment,
       prompts: prompts,
       initialPromptIndex: startIndex,
       contributorDirectoryKey: contributorDirectoryKey,
@@ -193,34 +209,5 @@ class SessionManager {
   /// Marks a prompt as completed in local storage.
   void markPromptCompleted(String promptId) {
     storage.setItem('hafs_completed_$promptId', 'true');
-  }
-
-  /// Marks a crowd batch complete and removes active claimed batch.
-  void markBatchComplete(String batchId) {
-    storage.setItem('hafs_batch_done_$batchId', 'true');
-    storage.removeItem('hafs_current_crowd_batch');
-  }
-
-  /// Claims the next batch in sequence (c00X + 1) or next available incomplete batch.
-  String claimNextCrowdBatch(ManifestData manifest, String currentBatchId) {
-    markBatchComplete(currentBatchId);
-
-    // Try c(current + 1) first
-    final currentNum = int.tryParse(currentBatchId.replaceAll(RegExp(r'[^0-9]'), '')) ?? 1;
-    for (int offset = 1; offset <= 100; offset++) {
-      int nextNum = currentNum + offset;
-      if (nextNum > 100) nextNum = ((nextNum - 1) % 100) + 1;
-      final nextBatchId = 'c${nextNum.toString().padLeft(3, '0')}';
-      final isDone = storage.getItem('hafs_batch_done_$nextBatchId') == 'true';
-      if (!isDone && manifest.hasWriter(nextBatchId)) {
-        storage.setItem('hafs_current_crowd_batch', nextBatchId);
-        return nextBatchId;
-      }
-    }
-
-    // Fallback if all 100 marked done
-    final fallback = 'c001';
-    storage.setItem('hafs_current_crowd_batch', fallback);
-    return fallback;
   }
 }

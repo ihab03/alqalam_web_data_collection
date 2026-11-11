@@ -57,7 +57,7 @@ class UploadService {
   /// Rasterizes canonical line PNGs and uploads directly to Supabase Storage.
   ///
   /// Target path: recordings/${contributorKey}/${writerId}/${promptId}/
-  /// - line_0.png (and line_1.png if multiline) with contentType: 'image/png'
+  /// - line_0.png (and line_1.png, line_2.png if multiline up to 3 bands) with contentType: 'image/png'
   /// - record.json with contentType: 'application/json'
   /// - fileOptions: const FileOptions(upsert: true)
   Future<UploadResult> submitAndUploadPrompt({
@@ -157,7 +157,13 @@ class UploadService {
         this.contributorUid ??
         sessionManager.contributorUid;
 
-    final Map<String, dynamic> recordJson = Map<String, dynamic>.from(promptItem.rawJson);
+    final Map<String, dynamic> recordJson = Map<String, dynamic>.from(
+      promptItem.rawJson.isNotEmpty ? promptItem.rawJson : promptItem.toJson(),
+    );
+    // Explicitly ensure v2 manifest fields are preserved in record.json
+    recordJson['assignment'] = promptItem.assignment;
+    recordJson['tier'] = promptItem.tier;
+    recordJson['pack_type'] = promptItem.packType;
     recordJson['capture_meta'] = {
       'recorded_at_utc': DateTime.now().toUtc().toIso8601String(),
       'user_agent': storage.getUserAgent(),

@@ -26,16 +26,17 @@ class _CollectionScreenState extends State<CollectionScreen> {
   late final SessionManager _sessionManager;
   late final UploadService _uploadService;
 
-  ManifestData? _manifest;
   bool _isLoading = true;
   String? _errorMessage;
 
-  String _writerId = 'c001';
-  String _tier = 'crowd_15';
+  String _writerId = '';
+  String _tier = '';
+  String _assignment = '';
   List<PromptItem> _prompts = [];
   int _currentIndex = 0;
   bool _isCelebration = false;
   bool _isUploading = false;
+  bool _isInvalidLink = false;
 
   List<CanvasLineRecorder> _lineRecorders = [];
 
@@ -63,9 +64,17 @@ class _CollectionScreenState extends State<CollectionScreen> {
       final uri = widget.initialUri ?? Uri.base;
       final session = _sessionManager.resolveSession(uri, manifest);
 
-      _manifest = manifest;
+      if (session == null) {
+        setState(() {
+          _isLoading = false;
+          _isInvalidLink = true;
+        });
+        return;
+      }
+
       _writerId = session.writerId;
       _tier = session.tier;
+      _assignment = session.assignment;
       _prompts = session.prompts;
       _currentIndex = session.initialPromptIndex;
 
@@ -146,23 +155,26 @@ class _CollectionScreenState extends State<CollectionScreen> {
 
     if (!_validateCanWrite()) return;
 
-    // 1. Validation: Ensure canvas is not empty (at least 1 stroke with >= 2 points)
-    final bool hasValidStroke = _lineRecorders.any(
+    // 1. Validation: Ensure canvas is not empty (at least 1 stroke with >= 2 points per band)
+    final bool hasValidStroke = _lineRecorders.every(
       (rec) => rec.hasValidContent,
     );
     if (!hasValidStroke) {
+      final msg = _lineRecorders.length > 1
+          ? '✍️ يرجى كتابة النص القرآني في جميع الأسطر المعروضة قبل المتابعة.'
+          : '✍️ يرجى كتابة النص القرآني المعروض على اللوح قبل المتابعة.';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-            '✍️ يرجى كتابة النص القرآني المعروض على اللوح قبل المتابعة.',
+            msg,
             textDirection: TextDirection.rtl,
-            style: TextStyle(
+            style: const TextStyle(
               fontFamilyFallback: ['Amiri', 'Traditional Arabic'],
             ),
           ),
-          backgroundColor: Color(0xFFB45309),
+          backgroundColor: const Color(0xFFB45309),
           behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 3),
+          duration: const Duration(seconds: 3),
         ),
       );
       return;
@@ -259,26 +271,6 @@ class _CollectionScreenState extends State<CollectionScreen> {
     }
   }
 
-  /// Handles "Contribute 15 More" flow.
-  void _handleContributeMore() {
-    if (_manifest == null) return;
-
-    final nextBatchId = _sessionManager.claimNextCrowdBatch(
-      _manifest!,
-      _writerId,
-    );
-    final prompts = _manifest!.getPromptsForWriter(nextBatchId) ?? [];
-
-    setState(() {
-      _writerId = nextBatchId;
-      _prompts = prompts;
-      _currentIndex = 0;
-      _isCelebration = false;
-    });
-
-    _setupLineRecordersForCurrentPrompt();
-  }
-
   bool _isNameDialogShowing = false;
 
   /// Validates whether the user can start writing / typing.
@@ -311,7 +303,8 @@ class _CollectionScreenState extends State<CollectionScreen> {
             final newName = controller.text.trim();
             if (newName.isEmpty) {
               setDialogState(() {
-                validationError = 'يرجى إدخال اسمك قبل البدء بالكتابة';
+                validationError =
+                    'يرجى إدخال اسمك باللغة الاتجليزية قبل البدء بالكتابة';
               });
               return;
             }
@@ -498,6 +491,10 @@ class _CollectionScreenState extends State<CollectionScreen> {
       );
     }
 
+    if (_isInvalidLink) {
+      return _buildInvalidLinkScreen();
+    }
+
     if (_errorMessage != null) {
       return Scaffold(
         body: Center(
@@ -537,8 +534,8 @@ class _CollectionScreenState extends State<CollectionScreen> {
           child: CelebrationView(
             writerId: _writerId,
             tier: _tier,
+            assignment: _assignment,
             totalSubmitted: _prompts.length,
-            onContributeMore: _handleContributeMore,
             onReviewPrompts: () {
               setState(() {
                 _isCelebration = false;
@@ -566,6 +563,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
         child: CollectionTopBar(
           writerId: _writerId,
           tier: _tier,
+          assignment: _assignment,
           currentIndex: _currentIndex,
           totalCount: _prompts.length,
           currentPrompt: prompt,
@@ -820,6 +818,143 @@ class _CollectionScreenState extends State<CollectionScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Screen displayed when ?writer query parameter is missing or invalid (§1 & §5.1).
+  Widget _buildInvalidLinkScreen() {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 580),
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 32.0,
+                vertical: 40.0,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24.0),
+                border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x08000000),
+                    blurRadius: 20,
+                    offset: Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: const Color(0xFFFECACA),
+                        width: 2,
+                      ),
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.link_off_rounded,
+                        color: Color(0xFFDC2626),
+                        size: 44,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'رابط غير صالح أو مفقود',
+                    textDirection: TextDirection.rtl,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF0F172A),
+                      fontFamilyFallback: ['Amiri', 'Traditional Arabic'],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'يتطلب الدخول إلى منصة جمع بيانات الخط القرآني استخدام الرابط الشخصي المخصص لك، والمرفق به معرف الكاتب المعتمد.',
+                    textDirection: TextDirection.rtl,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 15.5,
+                      color: Color(0xFF475569),
+                      height: 1.6,
+                      fontFamilyFallback: ['Amiri', 'Traditional Arabic'],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Container(
+                    padding: const EdgeInsets.all(16.0),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'صيغة الرابط المطلوبة:',
+                          textDirection: TextDirection.rtl,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Directionality(
+                          textDirection: TextDirection.ltr,
+                          child: Text(
+                            'https://<domain>/#/?writer=<slot>',
+                            style: TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 13.5,
+                              color: Color(0xFF0F172A),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: 12),
+                        Text(
+                          'الفتحات المعتمدة (26 كاتباً):\n'
+                          '• e01 – e03 : جلسات التقييم (50 آية)\n'
+                          '• s01 – s20 : جلسات التقييم السريع (15 آية)\n'
+                          '• t01 – t03 : جلسات التدريب (120 آية)',
+                          textDirection: TextDirection.rtl,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            color: Color(0xFF475569),
+                            height: 1.6,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'يرجى مراجعة الرابط المرسل إليك من المشرف للوصول إلى جلستك.',
+                    textDirection: TextDirection.rtl,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -84,11 +84,15 @@ class _HandwritingCanvasBandWidgetState
                         child: Text(
                           widget.linePromptText!,
                           textDirection: TextDirection.rtl,
-                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 16.0,
+                            fontSize: 20.0,
                             fontWeight: FontWeight.w700,
                             color: Color(0xFF0F172A),
+                            fontFamilyFallback: [
+                              'Amiri',
+                              'Traditional Arabic',
+                              'Scheherazade New',
+                            ],
                           ),
                         ),
                       ),
