@@ -19,11 +19,15 @@ class CelebrationView extends StatelessWidget {
   });
 
   String get _assignmentTitle {
-    if (assignment == 'EVAL' || tier == 'eval_50') {
+    if (assignment == 'TEST' || tier == 'test_30') {
+      return 'جلسة الاختبار (TEST)';
+    } else if (assignment == 'VAL' || tier == 'val_150') {
+      return 'جلسة التحقق (VAL)';
+    } else if (assignment == 'EVAL' || tier == 'eval_50') {
       return 'جلسة التقييم (EVAL)';
     } else if (assignment == 'EVAL_SHORT' || tier == 'eval_short_15') {
       return 'جلسة التقييم السريعة (EVAL_SHORT)';
-    } else if (assignment == 'TRAIN' || tier == 'train_120') {
+    } else if (assignment == 'TRAIN' || tier.startsWith('train_')) {
       return 'جلسة التدريب (TRAIN)';
     }
     return 'جلسة الكتابة';

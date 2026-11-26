@@ -90,10 +90,12 @@ class _CollectionScreenState extends State<CollectionScreen> {
         _isLoading = false;
       });
 
-      if (!_sessionManager.hasCustomContributorName && !_isCelebration) {
+      if (!_sessionManager.hasValidWriterNameForSlot(_writerId) &&
+          !_isCelebration) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && !_sessionManager.hasCustomContributorName) {
-            _showContributorNameDialog(isMandatory: true);
+          if (mounted &&
+              !_sessionManager.hasValidWriterNameForSlot(_writerId)) {
+            _showCompulsoryWriterNameDialog();
           }
         });
       }
@@ -198,8 +200,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
         logicalWidth: logicalWidth,
         logicalHeight: logicalHeight,
         dpr: dpr,
-        contributorKey: _sessionManager.contributorDirectoryKey,
-        contributorName: _sessionManager.contributorName,
+        contributorName: _sessionManager.getWriterNameForSlot(_writerId),
         contributorUid: _sessionManager.contributorUid,
       );
 
@@ -273,187 +274,154 @@ class _CollectionScreenState extends State<CollectionScreen> {
 
   bool _isNameDialogShowing = false;
 
-  /// Validates whether the user can start writing / typing.
-  /// If no name has been entered, opens the compulsory name dialog and returns false.
   bool _validateCanWrite() {
-    if (!_sessionManager.hasCustomContributorName) {
-      _showContributorNameDialog(isMandatory: true);
+    if (!_sessionManager.hasValidWriterNameForSlot(_writerId)) {
+      _showCompulsoryWriterNameDialog();
       return false;
     }
     return true;
   }
 
-  /// Dialog allowing the user to view, customize, or mandatorily enter their contributor display name.
-  Future<void> _showContributorNameDialog({bool isMandatory = false}) async {
+  Future<void> _showCompulsoryWriterNameDialog() async {
     if (_isNameDialogShowing || !mounted) return;
     _isNameDialogShowing = true;
 
-    final currentName = _sessionManager.contributorName;
     final controller = TextEditingController(
-      text: currentName == 'anonymous' ? '' : currentName,
+      text: _sessionManager.getWriterNameForSlot(_writerId) ?? '',
     );
     String? validationError;
 
-    await showDialog(
+    await showDialog<void>(
       context: context,
-      barrierDismissible: !isMandatory,
+      barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
-          void submitName() {
-            final newName = controller.text.trim();
-            if (newName.isEmpty) {
-              setDialogState(() {
-                validationError =
-                    'يرجى إدخال اسمك باللغة الاتجليزية قبل البدء بالكتابة';
-              });
-              return;
-            }
-            if (newName.toLowerCase() == 'anonymous') {
-              setDialogState(() {
-                validationError = 'يرجى إدخال اسمك الحقيقي';
-              });
-              return;
-            }
-            final sanitized = SessionManager.sanitizeContributorName(newName);
-            if (sanitized.isEmpty || sanitized == 'anonymous') {
-              setDialogState(() {
-                validationError = 'يرجى إدخال اسم صحيح يحتوي على حروف';
-              });
-              return;
-            }
+          final trimmed = controller.text.trim();
+          final isValid = SessionManager.isValidEnglishWriterName(trimmed);
 
-            setState(() {
-              _sessionManager.contributorName = newName;
-            });
+          void submitName() {
+            if (!SessionManager.isValidEnglishWriterName(controller.text)) {
+              setDialogState(() {
+                validationError = 'يرجى إدخال الاسم بالحروف الإنجليزية فقط.';
+              });
+              return;
+            }
+            _sessionManager.setWriterNameForSlot(
+              _writerId,
+              controller.text.trim(),
+            );
+            setState(() {});
             Navigator.of(ctx).pop();
           }
 
           return PopScope(
-            canPop: !isMandatory,
-            child: AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              title: Row(
-                textDirection: TextDirection.rtl,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFECFDF5),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.person_rounded,
-                      color: Color(0xFF065F46),
-                      size: 24,
-                    ),
+            canPop: false,
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: AlertDialog(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                title: const Text(
+                  'أدخل اسمك باللغة الإنجليزية',
+                  textDirection: TextDirection.rtl,
+                  style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
+                    fontFamilyFallback: ['Amiri', 'Traditional Arabic'],
                   ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'اسم الكاتب / المساهم',
-                      textDirection: TextDirection.rtl,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        fontFamilyFallback: ['Amiri', 'Traditional Arabic'],
+                ),
+                content: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'يرجى كتابة اسمك باللغة الإنجليزية فقط قبل البدء، وذلك لحفظه في قاعدة البيانات.',
+                        textDirection: TextDirection.rtl,
+                        style: TextStyle(
+                          fontSize: 14.5,
+                          color: Color(0xFF475569),
+                          height: 1.5,
+                          fontFamilyFallback: ['Amiri', 'Traditional Arabic'],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Directionality(
+                        textDirection: TextDirection.ltr,
+                        child: TextField(
+                          controller: controller,
+                          autofocus: true,
+                          textDirection: TextDirection.ltr,
+                          textAlign: TextAlign.left,
+                          decoration: InputDecoration(
+                            hintText: 'Example: Ahmad Ali',
+                            hintTextDirection: TextDirection.ltr,
+                            errorText: validationError,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                color: Color(0xFF065F46),
+                                width: 2,
+                              ),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                          ),
+                          onChanged: (value) {
+                            final t = value.trim();
+                            setDialogState(() {
+                              if (t.isNotEmpty &&
+                                  !SessionManager.isValidEnglishWriterName(t)) {
+                                validationError =
+                                    'يرجى إدخال الاسم بالحروف الإنجليزية فقط.';
+                              } else {
+                                validationError = null;
+                              }
+                            });
+                          },
+                          onSubmitted: (_) => submitName(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                actionsPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 16,
+                ),
+                actions: [
+                  SizedBox(
+                    width: double.infinity,
+                    height: 46,
+                    child: FilledButton(
+                      onPressed: isValid ? submitName : null,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF065F46),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text(
+                        'متابعة',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15.5,
+                          fontFamilyFallback: ['Amiri', 'Traditional Arabic'],
+                        ),
                       ),
                     ),
                   ),
                 ],
               ),
-              content: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      isMandatory
-                          ? 'مرحباً بك! يرجى إدخال اسمك الكريم قبل البدء بالكتابة لحفظ وتوثيق مساهمتك باسمك في قاعدة البيانات:'
-                          : 'يمكنك تعديل اسمك لحفظ المساهمات في مجلد خاص بك باسمك في قاعدة البيانات:',
-                      textDirection: TextDirection.rtl,
-                      style: const TextStyle(
-                        fontSize: 14.5,
-                        color: Color(0xFF475569),
-                        height: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: controller,
-                      autofocus: true,
-                      textDirection: TextDirection.rtl,
-                      decoration: InputDecoration(
-                        labelText: 'الاسم',
-                        hintText: 'أدخل اسمك باللغة الانجليزية',
-                        errorText: validationError,
-                        prefixIcon: const Icon(
-                          Icons.badge_outlined,
-                          color: Color(0xFF065F46),
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(
-                            color: Color(0xFF065F46),
-                            width: 2,
-                          ),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
-                        ),
-                      ),
-                      onChanged: (_) {
-                        if (validationError != null) {
-                          setDialogState(() {
-                            validationError = null;
-                          });
-                        }
-                      },
-                      onSubmitted: (_) => submitName(),
-                    ),
-                  ],
-                ),
-              ),
-              actionsPadding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 16,
-              ),
-              actions: [
-                if (!isMandatory)
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: const Text('إلغاء'),
-                  ),
-                FilledButton.icon(
-                  onPressed: submitName,
-                  icon: const Icon(Icons.check_rounded, size: 18),
-                  label: Text(
-                    isMandatory ? 'بدء الكتابة' : 'حفظ التعديل',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                      fontFamilyFallback: ['Amiri', 'Traditional Arabic'],
-                    ),
-                  ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF065F46),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 12,
-                    ),
-                  ),
-                ),
-              ],
             ),
           );
         },
@@ -527,8 +495,96 @@ class _CollectionScreenState extends State<CollectionScreen> {
       );
     }
 
-    // Celebration Screen
+    // Celebration Screen (gated by pending uploads check)
     if (_isCelebration) {
+      final pendingCount = _uploadService.getPendingUploadsCount();
+      if (pendingCount > 0) {
+        return Scaffold(
+          backgroundColor: const Color(0xFFF8FAFC),
+          body: SafeArea(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 520),
+                  child: Container(
+                    padding: const EdgeInsets.all(28.0),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20.0),
+                      border: Border.all(
+                        color: const Color(0xFFFCD34D),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.cloud_upload_rounded,
+                          color: Color(0xFFB45309),
+                          size: 48,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'يوجد $pendingCount تسجيل معلق بانتظار الرفع',
+                          textDirection: TextDirection.rtl,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF92400E),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'يرجى التأكد من الاتصال بالإنترنت والضغط على إعادة المحاولة لإتمام رفع جميع التسجيلات قبل إنهاء الجلسة.',
+                          textDirection: TextDirection.rtl,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: Color(0xFF475569),
+                            height: 1.5,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: ElevatedButton.icon(
+                            onPressed: _isUploading
+                                ? null
+                                : () async {
+                                    setState(() => _isUploading = true);
+                                    await _uploadService.retryPendingUploads();
+                                    if (mounted) {
+                                      setState(() => _isUploading = false);
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFB45309),
+                              foregroundColor: Colors.white,
+                            ),
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text(
+                              'إعادة المحاولة (Retry)',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+
       return Scaffold(
         body: SafeArea(
           child: CelebrationView(
@@ -567,10 +623,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
           currentIndex: _currentIndex,
           totalCount: _prompts.length,
           currentPrompt: prompt,
-          contributorName: _sessionManager.contributorName,
-          onEditContributorName: () => _showContributorNameDialog(
-            isMandatory: !_sessionManager.hasCustomContributorName,
-          ),
+          pendingUploadsCount: _uploadService.getPendingUploadsCount(),
         ),
       ),
       body: SafeArea(
@@ -617,7 +670,10 @@ class _CollectionScreenState extends State<CollectionScreen> {
                   const SizedBox(height: 8),
 
                   // Intentional Error Warning Banner (Pack D) - Section 2
-                  IntentionalErrorBanner(noticeText: prompt.uiNoticeAr),
+                  IntentionalErrorBanner(
+                    noticeText: prompt.uiNoticeAr,
+                    noteText: prompt.uiNoteAr,
+                  ),
 
                   // Quran Prompt Text Display
                   Container(
@@ -640,22 +696,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
                     ),
                     child: Column(
                       children: [
-                        Text(
-                          prompt.displayTextUthmani,
-                          textDirection: TextDirection.rtl,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 30.0,
-                            fontWeight: FontWeight.w700,
-                            height: 1.8,
-                            color: Color(0xFF0F172A),
-                            fontFamilyFallback: [
-                              'Amiri',
-                              'Traditional Arabic',
-                              'Scheherazade New',
-                            ],
-                          ),
-                        ),
+                        _buildPromptText(prompt),
                         if (prompt.errorMeta != null)
                           Padding(
                             padding: const EdgeInsets.only(top: 8.0),
@@ -689,6 +730,60 @@ class _CollectionScreenState extends State<CollectionScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildPromptText(PromptItem prompt) {
+    const baseStyle = TextStyle(
+      fontSize: 30.0,
+      fontWeight: FontWeight.w700,
+      height: 1.8,
+      color: Color(0xFF0F172A),
+      fontFamilyFallback: [
+        'Amiri',
+        'Traditional Arabic',
+        'Scheherazade New',
+      ],
+    );
+
+    final idx = prompt.highlightWordIndex;
+    if (idx != null) {
+      final text = prompt.linePrompts.isNotEmpty
+          ? prompt.linePrompts[0].displayTextUthmani
+          : prompt.displayTextUthmani;
+      final words = text.split(' ');
+      if (idx >= 0 && idx < words.length) {
+        return Text.rich(
+          TextSpan(
+            style: baseStyle,
+            children: [
+              for (int i = 0; i < words.length; i++) ...[
+                if (i > 0) const TextSpan(text: ' '),
+                TextSpan(
+                  text: words[i],
+                  style: i == idx
+                      ? baseStyle.copyWith(
+                          backgroundColor: const Color(0xFFFDE68A),
+                          color: const Color(0xFF78350F),
+                          decoration: TextDecoration.underline,
+                          decorationColor: const Color(0xFFD97706),
+                        )
+                      : null,
+                ),
+              ],
+            ],
+          ),
+          textDirection: TextDirection.rtl,
+          textAlign: TextAlign.center,
+        );
+      }
+    }
+
+    return Text(
+      prompt.displayTextUthmani,
+      textDirection: TextDirection.rtl,
+      textAlign: TextAlign.center,
+      style: baseStyle,
     );
   }
 
@@ -918,7 +1013,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
                         Directionality(
                           textDirection: TextDirection.ltr,
                           child: Text(
-                            'https://<domain>/#/?writer=<slot>',
+                            'https://<domain>/?w=<slot>',
                             style: TextStyle(
                               fontFamily: 'monospace',
                               fontSize: 13.5,
@@ -929,10 +1024,12 @@ class _CollectionScreenState extends State<CollectionScreen> {
                         ),
                         SizedBox(height: 12),
                         Text(
-                          'الفتحات المعتمدة (26 كاتباً):\n'
-                          '• e01 – e03 : جلسات التقييم (50 آية)\n'
-                          '• s01 – s20 : جلسات التقييم السريع (15 آية)\n'
-                          '• t01 – t03 : جلسات التدريب (120 آية)',
+                          'الفتحات المعتمدة (21 كاتباً):\n'
+                          '• v3_x01 – v3_x03 : جلسات الاختبار (30 آية)\n'
+                          '• v3_v01 : جلسة التحقق (150 آية)\n'
+                          '• v3_c01 – v3_c07 : جلسات التدريب (30 آية)\n'
+                          '• v3_l01 – v3_l05 : جلسات التدريب المختصرة (15 آية)\n'
+                          '• v3_s01 – v3_s05 : جلسات التدريب الإضافية (30 آية)',
                           textDirection: TextDirection.rtl,
                           style: TextStyle(
                             fontSize: 13.5,

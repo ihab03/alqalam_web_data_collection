@@ -51,7 +51,12 @@ class _HandwritingCanvasBandWidgetState
           maxWidth: widget.maxWidth,
           minWidth: 320.0,
         ),
-        child: Column(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final bandWidth = constraints.maxWidth.isFinite
+                ? constraints.maxWidth
+                : widget.maxWidth;
+            return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (widget.lineLabel != null || widget.linePromptText != null)
@@ -132,21 +137,17 @@ class _HandwritingCanvasBandWidgetState
                       return;
                     }
 
-                    // Validate if writing is permitted (e.g. compulsory contributor name check)
                     if (widget.onValidateCanWrite != null &&
                         !widget.onValidateCanWrite!()) {
                       return;
                     }
 
-                    final kindStr = event.kind == PointerDeviceKind.stylus
-                        ? 'stylus'
-                        : 'touch';
+                    final kindStr = event.kind.name;
                     _detectedPointerKind = kindStr;
 
                     final pos = event.localPosition;
-                    // Clamp y to canvas height bounds
+                    final clampedX = pos.dx.clamp(0.0, bandWidth);
                     final clampedY = pos.dy.clamp(0.0, widget.height);
-                    final clampedX = pos.dx;
 
                     widget.recorder.startStroke(
                       clampedX,
@@ -159,13 +160,11 @@ class _HandwritingCanvasBandWidgetState
                     if (event.kind == PointerDeviceKind.mouse) return;
                     if (widget.recorder.currentStroke == null) return;
 
-                    final kindStr = event.kind == PointerDeviceKind.stylus
-                        ? 'stylus'
-                        : 'touch';
+                    final kindStr = event.kind.name;
 
                     final pos = event.localPosition;
+                    final clampedX = pos.dx.clamp(0.0, bandWidth);
                     final clampedY = pos.dy.clamp(0.0, widget.height);
-                    final clampedX = pos.dx;
 
                     widget.recorder.appendPoint(
                       clampedX,
@@ -192,7 +191,7 @@ class _HandwritingCanvasBandWidgetState
                           currentStroke: widget.recorder.currentStroke,
                           baselineY: 75.0,
                         ),
-                        size: Size(widget.maxWidth, widget.height),
+                        size: Size(bandWidth, widget.height),
                       );
                     },
                   ),
@@ -200,6 +199,8 @@ class _HandwritingCanvasBandWidgetState
               ),
             ),
           ],
+        );
+          },
         ),
       ),
     );

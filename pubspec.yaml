@@ -62,7 +62,7 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-    - assets/data/collection_manifest_v2.json
+    - assets/data/collection_manifest_v3.json
     - assets/fonts/
  
 

@@ -27,6 +27,35 @@ class SessionResolutionResult {
 class SessionManager {
   static const String contributorUidKey = 'hafs_contributor_uid';
   static const String contributorNameKey = 'hafs_contributor_name';
+  static const String writerNameSlotPrefix = 'hafs_writer_name_';
+  static final RegExp englishNameRegex = RegExp(r"^[A-Za-z][A-Za-z\s\-']{1,49}$");
+
+  /// Validates that [name] is non-empty and uses English letters only.
+  static bool isValidEnglishWriterName(String? name) {
+    if (name == null) return false;
+    return englishNameRegex.hasMatch(name.trim());
+  }
+
+  /// Returns the validated English writer name stored for [slot], or null if not set.
+  String? getWriterNameForSlot(String slot) {
+    final stored = storage.getItem('$writerNameSlotPrefix$slot')?.trim();
+    if (stored != null && isValidEnglishWriterName(stored)) {
+      return stored;
+    }
+    return null;
+  }
+
+  /// Persists a validated English writer [name] under `hafs_writer_name_<slot>`.
+  void setWriterNameForSlot(String slot, String name) {
+    final trimmed = name.trim();
+    if (isValidEnglishWriterName(trimmed)) {
+      storage.setItem('$writerNameSlotPrefix$slot', trimmed);
+    }
+  }
+
+  /// Whether a valid English writer name has already been stored for [slot].
+  bool hasValidWriterNameForSlot(String slot) =>
+      getWriterNameForSlot(slot) != null;
 
   final StorageService storage;
 
@@ -111,28 +140,29 @@ class SessionManager {
     return '${sanitizedName}_$contributorUid';
   }
 
-  /// Extracts the writer parameter from the URL, handling both standard query
-  /// parameters and hash fragment query parameters (e.g. ?writer=e01 or /#/?writer=e01).
+  /// Extracts the v3 `?w=<slot>` parameter from the URL, handling both standard
+  /// query parameters (`?w=v3_x01`) and hash fragment query parameters (`/#/?w=v3_x01`).
   static String? extractWriterParam(Uri uri) {
-    String? writerParam = uri.queryParameters['writer']?.trim().toLowerCase();
-    if (writerParam != null && writerParam.isNotEmpty) {
-      return writerParam;
+    String? slot = uri.queryParameters['w']?.trim();
+    if (slot != null && slot.isNotEmpty) {
+      return slot;
     }
     if (uri.fragment.isNotEmpty) {
       final fragment = uri.fragment;
+      final fragmentUri = Uri.tryParse(
+        fragment.startsWith('/') ? fragment : '/$fragment',
+      );
+      slot = fragmentUri?.queryParameters['w']?.trim();
+      if (slot != null && slot.isNotEmpty) {
+        return slot;
+      }
       final questionIndex = fragment.indexOf('?');
       if (questionIndex != -1) {
         final queryStr = fragment.substring(questionIndex + 1);
         final fragmentQuery = Uri.splitQueryString(queryStr);
-        writerParam = fragmentQuery['writer']?.trim().toLowerCase();
-        if (writerParam != null && writerParam.isNotEmpty) {
-          return writerParam;
-        }
-      } else {
-        final fragmentUri = Uri.tryParse(fragment);
-        writerParam = fragmentUri?.queryParameters['writer']?.trim().toLowerCase();
-        if (writerParam != null && writerParam.isNotEmpty) {
-          return writerParam;
+        slot = fragmentQuery['w']?.trim();
+        if (slot != null && slot.isNotEmpty) {
+          return slot;
         }
       }
     }

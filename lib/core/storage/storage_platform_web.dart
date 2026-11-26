@@ -28,6 +28,18 @@ class WebStorageImpl {
     } catch (_) {}
   }
 
+  List<String> getKeys() {
+    final keys = <String>[];
+    try {
+      final len = web.window.localStorage.length;
+      for (int i = 0; i < len; i++) {
+        final k = web.window.localStorage.key(i);
+        if (k != null) keys.add(k);
+      }
+    } catch (_) {}
+    return keys;
+  }
+
   String getUserAgent() {
     try {
       return web.window.navigator.userAgent;

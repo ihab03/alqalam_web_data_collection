@@ -75,21 +75,25 @@ class UploadService {
 
     // Determine primary pointer kind from recorded points
     String primaryPointerKind = 'touch';
-    int stylusCount = 0;
-    int touchCount = 0;
+    final Map<String, int> kindCounts = {};
     for (final rec in lineRecorders) {
       for (final s in rec.strokes) {
         for (final pt in s) {
-          if (pt.kind == 'stylus') {
-            stylusCount++;
-          } else {
-            touchCount++;
-          }
+          kindCounts[pt.kind] = (kindCounts[pt.kind] ?? 0) + 1;
         }
       }
     }
-    if (stylusCount >= touchCount && stylusCount > 0) {
-      primaryPointerKind = 'stylus';
+    if (kindCounts.isNotEmpty) {
+      String bestKind = kindCounts.keys.first;
+      int bestCount = -1;
+      for (final entry in kindCounts.entries) {
+        if (entry.value > bestCount ||
+            (entry.value == bestCount && entry.key == 'stylus')) {
+          bestKind = entry.key;
+          bestCount = entry.value;
+        }
+      }
+      primaryPointerKind = bestKind;
     }
 
     final List<Map<String, dynamic>> linesData = [];
@@ -147,30 +151,29 @@ class UploadService {
 
     // 2. Build record.json schema with contributor provenance
     final sessionManager = SessionManager(storage: storage);
-    final resolvedContributorKey = contributorKey ??
-        this.contributorKey ??
-        sessionManager.contributorDirectoryKey;
-    final resolvedContributorName = contributorName ??
-        this.contributorName ??
-        sessionManager.contributorName;
     final resolvedContributorUid = contributorUid ??
         this.contributorUid ??
         sessionManager.contributorUid;
+    final resolvedWriterName = contributorName ??
+        this.contributorName ??
+        sessionManager.getWriterNameForSlot(promptItem.writerId);
 
     final Map<String, dynamic> recordJson = Map<String, dynamic>.from(
       promptItem.rawJson.isNotEmpty ? promptItem.rawJson : promptItem.toJson(),
     );
-    // Explicitly ensure v2 manifest fields are preserved in record.json
+    // Explicitly ensure v3 manifest fields are preserved in record.json
     recordJson['assignment'] = promptItem.assignment;
     recordJson['tier'] = promptItem.tier;
     recordJson['pack_type'] = promptItem.packType;
+    recordJson['highlight_word_index'] = promptItem.highlightWordIndex;
+    recordJson['ui_note_ar'] = promptItem.uiNoteAr;
     recordJson['capture_meta'] = {
       'recorded_at_utc': DateTime.now().toUtc().toIso8601String(),
       'user_agent': storage.getUserAgent(),
       'device_pixel_ratio': dpr,
       'input_mode': primaryPointerKind,
       'primary_pointer_kind': primaryPointerKind,
-      'contributor_name': resolvedContributorName,
+      'writer_name': resolvedWriterName,
       'contributor_uid': resolvedContributorUid,
     };
     recordJson['lines'] = linesData;
@@ -179,8 +182,8 @@ class UploadService {
     final writerId = promptItem.writerId;
     final promptId = promptItem.promptId;
 
-    // Isolated per-user storage path:
-    final folderPath = 'recordings/$resolvedContributorKey/$writerId/$promptId';
+    // v3 upload folder = <slot>/<prompt_id>
+    final folderPath = '$writerId/$promptId';
 
     // 3. Upload directly to Supabase Storage bucket 'alqalam-recordings'
     try {
@@ -242,5 +245,108 @@ class UploadService {
 
   void _cacheOfflinePayload(String promptId, String recordJsonString) {
     storage.setItem('hafs_pending_$promptId', recordJsonString);
+  }
+
+  /// Counts locally queued failed uploads (`hafs_pending_<prompt_id>`).
+  int getPendingUploadsCount() =>
+      storage.getKeysWithPrefix('hafs_pending_').length;
+
+  /// Retries uploading all locally queued `hafs_pending_<prompt_id>` bundles.
+  Future<int> retryPendingUploads() async {
+    final keys = storage.getKeysWithPrefix('hafs_pending_')..sort();
+    for (final key in keys) {
+      final raw = storage.getItem(key);
+      if (raw == null || raw.trim().isEmpty) {
+        storage.removeItem(key);
+        continue;
+      }
+      try {
+        final client = _client;
+        if (client == null) {
+          throw Exception('Supabase client is not initialized');
+        }
+        final recordJson = jsonDecode(raw) as Map<String, dynamic>;
+        final writerId = recordJson['writer_id'] as String? ?? '';
+        final promptId = recordJson['prompt_id'] as String? ??
+            key.substring('hafs_pending_'.length);
+        final folderPath = '$writerId/$promptId';
+        final storageBucket = client.storage.from(targetBucket);
+
+        final lines = recordJson['lines'] as List<dynamic>? ?? const [];
+        final meta =
+            recordJson['capture_meta'] as Map<String, dynamic>? ?? const {};
+        final defaultDpr =
+            (meta['device_pixel_ratio'] as num?)?.toDouble() ?? 1.0;
+
+        for (int i = 0; i < lines.length; i++) {
+          final lineMap = lines[i] as Map<String, dynamic>;
+          final logicalWidth =
+              (lineMap['canvas_width_logical'] as num?)?.toDouble() ?? 840.0;
+          final logicalHeight =
+              (lineMap['canvas_height_logical'] as num?)?.toDouble() ?? 108.0;
+          final pixelW = (lineMap['image_width_px'] as num?)?.toInt() ??
+              (logicalWidth * defaultDpr).round();
+          final pixelH = (lineMap['image_height_px'] as num?)?.toInt() ??
+              (logicalHeight * defaultDpr).round();
+          final dpr = logicalWidth > 0 ? (pixelW / logicalWidth) : defaultDpr;
+          final pngFilename =
+              lineMap['png_filename'] as String? ?? 'line_$i.png';
+          final rawStrokes = lineMap['strokes'] as List<dynamic>? ?? const [];
+
+          final recorder = ui.PictureRecorder();
+          final canvas = Canvas(recorder)..scale(dpr, dpr);
+          canvas.drawRect(
+            Rect.fromLTWH(0, 0, logicalWidth, logicalHeight),
+            Paint()..color = const Color(0xFFFFFFFF),
+          );
+          final inkPaint = Paint()
+            ..color = const Color(0xFF000000)
+            ..strokeWidth = 3.0
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round
+            ..isAntiAlias = true
+            ..style = PaintingStyle.stroke;
+
+          for (final s in rawStrokes) {
+            final pts = (s as List<dynamic>)
+                .map((p) => StrokePoint.fromJson(p as Map<String, dynamic>))
+                .toList();
+            if (pts.length < 2) continue;
+            final path = Path()..moveTo(pts[0].x, pts[0].y);
+            for (int k = 1; k < pts.length; k++) {
+              path.lineTo(pts[k].x, pts[k].y);
+            }
+            canvas.drawPath(path, inkPaint);
+          }
+
+          final img = await recorder.endRecording().toImage(pixelW, pixelH);
+          final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+          final pngBytes = byteData!.buffer.asUint8List();
+
+          await storageBucket.uploadBinary(
+            '$folderPath/$pngFilename',
+            pngBytes,
+            fileOptions: const FileOptions(
+              upsert: true,
+              contentType: 'image/png',
+            ),
+          );
+        }
+
+        final recordBytes = Uint8List.fromList(utf8.encode(raw));
+        await storageBucket.uploadBinary(
+          '$folderPath/record.json',
+          recordBytes,
+          fileOptions: const FileOptions(
+            upsert: true,
+            contentType: 'application/json',
+          ),
+        );
+
+        storage.setItem('hafs_completed_$promptId', 'true');
+        storage.removeItem(key);
+      } catch (_) {}
+    }
+    return getPendingUploadsCount();
   }
 }

@@ -16,7 +16,7 @@ class ManifestData {
 }
 
 class ManifestRepository {
-  static const String manifestAssetPath = 'assets/data/collection_manifest_v2.json';
+  static const String manifestAssetPath = 'assets/data/collection_manifest_v3.json';
   static ManifestData? _cachedData;
 
   /// Loads and caches the collection manifest.

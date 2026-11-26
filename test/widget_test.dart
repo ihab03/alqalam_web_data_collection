@@ -221,9 +221,9 @@ void main() {
     ManifestRepository.clearCache();
   });
 
-  group('SessionManager Strict Query Parameter Routing (v2 Named Slots)', () {
-    test('?writer=e01 routes strictly to e01, eval_50 tier, EVAL assignment (50 prompts)', () {
-      final uri = Uri.parse('https://example.com/#/?writer=e01');
+  group('SessionManager Strict Query Parameter Routing (v3 ?w=<slot>)', () {
+    test('?w=e01 routes strictly to e01, eval_50 tier, EVAL assignment (50 prompts)', () {
+      final uri = Uri.parse('https://example.com/#/?w=e01');
       final result = sessionManager.resolveSession(uri, mockManifest);
 
       expect(result, isNotNull);
@@ -234,8 +234,8 @@ void main() {
       expect(result.initialPromptIndex, 0);
     });
 
-    test('?writer=s03 routes strictly to s03, eval_short_15 tier, EVAL_SHORT assignment (15 prompts)', () {
-      final uri = Uri.parse('https://example.com/?writer=s03');
+    test('?w=s03 routes strictly to s03, eval_short_15 tier, EVAL_SHORT assignment (15 prompts)', () {
+      final uri = Uri.parse('https://example.com/?w=s03');
       final result = sessionManager.resolveSession(uri, mockManifest);
 
       expect(result, isNotNull);
@@ -246,8 +246,8 @@ void main() {
       expect(result.initialPromptIndex, 0);
     });
 
-    test('?writer=t02 routes strictly to t02, train_120 tier, TRAIN assignment (120 prompts)', () {
-      final uri = Uri.parse('https://example.com/#/?writer=t02');
+    test('?w=t02 routes strictly to t02, train_120 tier, TRAIN assignment (120 prompts)', () {
+      final uri = Uri.parse('https://example.com/#/?w=t02');
       final result = sessionManager.resolveSession(uri, mockManifest);
 
       expect(result, isNotNull);
@@ -258,19 +258,19 @@ void main() {
       expect(result.initialPromptIndex, 0);
     });
 
-    test('Missing ?writer query parameter returns null (no auto-claim)', () {
+    test('Missing ?w query parameter returns null (no auto-claim)', () {
       final uri = Uri.parse('https://example.com/#/');
       final result = sessionManager.resolveSession(uri, mockManifest);
 
       expect(result, isNull);
     });
 
-    test('Unknown or invalid writer parameter returns null (no auto-assignment)', () {
+    test('Unknown or invalid w parameter returns null (no auto-assignment)', () {
       final invalidUris = [
-        Uri.parse('https://example.com/#/?writer=w01'), // Old v1 slot
-        Uri.parse('https://example.com/#/?writer=c001'), // Old crowd slot
-        Uri.parse('https://example.com/#/?writer=xyz'),
-        Uri.parse('https://example.com/?writer='),
+        Uri.parse('https://example.com/#/?w=w01'), // Old v1 slot
+        Uri.parse('https://example.com/#/?writer=e01'), // Old v2 ?writer param
+        Uri.parse('https://example.com/#/?w=xyz'),
+        Uri.parse('https://example.com/?w='),
       ];
 
       for (final u in invalidUris) {
@@ -285,7 +285,7 @@ void main() {
       sessionManager.markPromptCompleted('e02_002_eval');
       sessionManager.markPromptCompleted('e02_003_eval');
 
-      final uri = Uri.parse('https://example.com/#/?writer=e02');
+      final uri = Uri.parse('https://example.com/#/?w=e02');
       final result = sessionManager.resolveSession(uri, mockManifest);
 
       expect(result, isNotNull);
@@ -350,7 +350,7 @@ void main() {
       storage.setItem('hafs_contributor_uid', 'k8f2a1');
       sessionManager.contributorName = 'Ahmed';
 
-      final uri = Uri.parse('https://example.com/#/?writer=e01');
+      final uri = Uri.parse('https://example.com/#/?w=e01');
       final result = sessionManager.resolveSession(uri, mockManifest);
 
       expect(result, isNotNull);
@@ -412,7 +412,7 @@ void main() {
         contributorUid: 'k8f2a1',
       );
 
-      final expectedPath = 'recordings/ahmed_k8f2a1/e01/${promptItem.promptId}';
+      final expectedPath = 'e01/${promptItem.promptId}';
       expect(result.storagePath, expectedPath);
 
       final cachedJsonStr = storage.getItem('hafs_pending_${promptItem.promptId}');
@@ -420,14 +420,16 @@ void main() {
 
       final cachedJson = jsonDecode(cachedJsonStr!) as Map<String, dynamic>;
 
-      // v2 manifest echo check
+      // v3 manifest echo check
       expect(cachedJson['assignment'], 'EVAL');
       expect(cachedJson['tier'], 'eval_50');
       expect(cachedJson['pack_type'], 'disjoint_coverage');
+      expect(cachedJson.containsKey('highlight_word_index'), isTrue);
+      expect(cachedJson.containsKey('ui_note_ar'), isTrue);
 
       // capture_meta check
       final meta = cachedJson['capture_meta'] as Map<String, dynamic>;
-      expect(meta['contributor_name'], 'Ahmed');
+      expect(meta['writer_name'], 'Ahmed');
       expect(meta['contributor_uid'], 'k8f2a1');
       expect(meta['primary_pointer_kind'], 'stylus');
 
@@ -470,7 +472,7 @@ void main() {
         dpr: 1.0,
       );
 
-      expect(result.storagePath, 'recordings/tester_user123/e01/${promptItem.promptId}');
+      expect(result.storagePath, 'e01/${promptItem.promptId}');
 
       final cachedJsonStr = storage.getItem('hafs_pending_${promptItem.promptId}');
       final cachedJson = jsonDecode(cachedJsonStr!) as Map<String, dynamic>;
@@ -601,8 +603,6 @@ void main() {
     });
 
     testWidgets('CollectionTopBar renders badges and progress correctly with writer slot and assignment', (tester) async {
-      bool editTapped = false;
-
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -615,24 +615,16 @@ void main() {
                 currentIndex: 35,
                 totalCount: 50,
                 currentPrompt: mockManifest.writers['e01']![35], // long_multiline
-                contributorName: 'Ahmed',
-                onEditContributorName: () {
-                  editTapped = true;
-                },
               ),
             ),
           ),
         ),
       );
 
-      expect(find.text('الكاتب e01'), findsOneWidget);
+      expect(find.text('الحزمة e01'), findsOneWidget);
       expect(find.text('تقييم'), findsOneWidget);
       expect(find.text('36 / 50'), findsOneWidget);
-      expect(find.text('هـ: أسطر طويلة'), findsOneWidget);
-      expect(find.text('Ahmed'), findsOneWidget);
-
-      await tester.tap(find.text('Ahmed'));
-      expect(editTapped, isTrue);
+      expect(find.text('إدخال الاسم'), findsNothing);
     });
 
     testWidgets('HandwritingCanvasBandWidget blocks mouse events and triggers callback', (tester) async {
@@ -665,77 +657,46 @@ void main() {
       expect(recorder.isEmpty, isTrue);
     });
 
-    testWidgets('HandwritingCanvasBandWidget checks onValidateCanWrite before starting stroke', (tester) async {
-      bool canWrite = false;
-      int validateCallCount = 0;
+    testWidgets('HandwritingCanvasBandWidget never blocks touch and clamps x and y to band bounds', (tester) async {
       final recorder = CanvasLineRecorder(lineIndex: 0);
 
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: HandwritingCanvasBandWidget(
-              recorder: recorder,
-              onMouseBlocked: () {},
-              onValidateCanWrite: () {
-                validateCallCount++;
-                return canWrite;
-              },
-            ),
-          ),
-        ),
-      );
-
-      final center = tester.getCenter(find.byType(CustomPaint).last);
-
-      // 1. Touch when canWrite is false: should block stroke
-      final touch1 = await tester.createGesture(kind: PointerDeviceKind.touch);
-      await touch1.addPointer(location: center);
-      await touch1.down(center);
-      await touch1.moveTo(Offset(center.dx + 20, center.dy + 20));
-      await tester.pump();
-      await touch1.up();
-
-      expect(validateCallCount, 1);
-      expect(recorder.isEmpty, isTrue);
-
-      // 2. Touch when canWrite is true: should record stroke
-      canWrite = true;
-      final touch2 = await tester.createGesture(kind: PointerDeviceKind.touch);
-      await touch2.addPointer(location: center);
-      await touch2.down(center);
-      await touch2.moveTo(Offset(center.dx + 20, center.dy + 20));
-      await tester.pump();
-      await touch2.up();
-
-      expect(validateCallCount, 2);
-      expect(recorder.isEmpty, isFalse);
-    });
-
-    testWidgets('CollectionTopBar renders "إدخال الاسم" when contributorName is anonymous', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            appBar: PreferredSize(
-              preferredSize: const Size.fromHeight(80.0),
-              child: CollectionTopBar(
-                writerId: 's01',
-                tier: 'eval_short_15',
-                assignment: 'EVAL_SHORT',
-                currentIndex: 0,
-                totalCount: 15,
-                contributorName: 'anonymous',
+            body: SizedBox(
+              width: 500,
+              child: HandwritingCanvasBandWidget(
+                recorder: recorder,
+                maxWidth: 500,
+                height: 108,
+                onMouseBlocked: () {},
               ),
             ),
           ),
         ),
       );
 
-      expect(find.text('إدخال الاسم'), findsOneWidget);
+      final topLeft = tester.getTopLeft(find.byType(CustomPaint).last);
+      final touch = await tester.createGesture(kind: PointerDeviceKind.touch);
+      await touch.addPointer(location: topLeft + const Offset(20, 20));
+      await touch.down(topLeft + const Offset(20, 20));
+      await touch.moveTo(topLeft + const Offset(-40, -10));
+      await touch.moveTo(topLeft + const Offset(600, 150));
+      await tester.pump();
+      await touch.up();
+
+      expect(recorder.isEmpty, isFalse);
+      final pts = recorder.strokes.first;
+      expect(pts[1].x, 0.0);
+      expect(pts[1].y, 0.0);
+      expect(pts[2].x, 500.0);
+      expect(pts[2].y, 108.0);
+      expect(pts.first.kind, 'touch');
     });
   });
 
-  group('CollectionScreen V2 Integration Tests', () {
-    testWidgets('Shows "رابط غير صالح أو مفقود" error screen when writer param is missing', (tester) async {
+  group('CollectionScreen V3 Integration Tests', () {
+    testWidgets('Shows "رابط غير صالح أو مفقود" error screen when w param is missing', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: CollectionScreen(
@@ -749,14 +710,14 @@ void main() {
 
       expect(find.text('رابط غير صالح أو مفقود'), findsOneWidget);
       expect(find.byIcon(Icons.link_off_rounded), findsOneWidget);
-      expect(find.textContaining('e01 – e03'), findsOneWidget);
+      expect(find.textContaining('v3_x01 – v3_x03'), findsOneWidget);
     });
 
-    testWidgets('Shows "رابط غير صالح أو مفقود" error screen when writer param is an old v1 or unknown slot', (tester) async {
+    testWidgets('Shows "رابط غير صالح أو مفقود" error screen when w param is an old v1/v2 or unknown slot', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: CollectionScreen(
-            initialUri: Uri.parse('https://example.com/#/?writer=w01'),
+            initialUri: Uri.parse('https://example.com/#/?w=w01'),
           ),
         ),
       );
@@ -768,11 +729,11 @@ void main() {
       expect(find.byIcon(Icons.link_off_rounded), findsOneWidget);
     });
 
-    testWidgets('Loads prompts correctly when valid ?writer=e01 is provided', (tester) async {
+    testWidgets('Opens compulsory English writer-name modal on fresh slot, rejects Arabic/numbers, and saves valid English name to hafs_writer_name_<slot>', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: CollectionScreen(
-            initialUri: Uri.parse('https://example.com/#/?writer=e01'),
+            initialUri: Uri.parse('https://example.com/?w=e01'),
           ),
         ),
       );
@@ -780,10 +741,44 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
 
-      // Should display top bar with e01 writer badge and 1 / 50 progress
-      expect(find.text('الكاتب e01'), findsOneWidget);
+      // Compulsory Arabic modal is shown
+      expect(find.text('أدخل اسمك باللغة الإنجليزية'), findsOneWidget);
+      expect(
+        find.text('يرجى كتابة اسمك باللغة الإنجليزية فقط قبل البدء، وذلك لحفظه في قاعدة البيانات.'),
+        findsOneWidget,
+      );
+      expect(find.byType(TextField), findsOneWidget);
+
+      // Button is initially disabled when empty
+      final buttonFinder = find.widgetWithText(FilledButton, 'متابعة');
+      expect(tester.widget<FilledButton>(buttonFinder).onPressed, isNull);
+
+      // Typing Arabic characters is rejected with clear Arabic validation error
+      await tester.enterText(find.byType(TextField), 'أحمد علي');
+      await tester.pump();
+      expect(find.text('يرجى إدخال الاسم بالحروف الإنجليزية فقط.'), findsOneWidget);
+      expect(tester.widget<FilledButton>(buttonFinder).onPressed, isNull);
+
+      // Typing numbers is rejected
+      await tester.enterText(find.byType(TextField), 'Ahmad 123');
+      await tester.pump();
+      expect(find.text('يرجى إدخال الاسم بالحروف الإنجليزية فقط.'), findsOneWidget);
+      expect(tester.widget<FilledButton>(buttonFinder).onPressed, isNull);
+
+      // Entering valid English name clears error and enables button
+      await tester.enterText(find.byType(TextField), 'Ahmad Ali');
+      await tester.pump();
+      expect(find.text('يرجى إدخال الاسم بالحروف الإنجليزية فقط.'), findsNothing);
+      expect(tester.widget<FilledButton>(buttonFinder).onPressed, isNotNull);
+
+      await tester.tap(buttonFinder);
+      await tester.pumpAndSettle();
+
+      // Modal dismissed and name persisted in local storage under hafs_writer_name_e01
+      expect(find.text('أدخل اسمك باللغة الإنجليزية'), findsNothing);
+      expect(storage.getItem('hafs_writer_name_e01'), 'Ahmad Ali');
+      expect(find.text('الحزمة e01'), findsOneWidget);
       expect(find.text('1 / 50'), findsOneWidget);
-      expect(find.text('إرسال والتالي'), findsOneWidget);
     });
   });
 }

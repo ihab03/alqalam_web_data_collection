@@ -55,6 +55,8 @@ class PromptItem {
   final List<LinePrompt> linePrompts;
   final Map<String, dynamic>? errorMeta;
   final String? uiNoticeAr;
+  final int? highlightWordIndex;
+  final String? uiNoteAr;
   final Map<String, dynamic> rawJson;
 
   const PromptItem({
@@ -77,6 +79,8 @@ class PromptItem {
     required this.linePrompts,
     this.errorMeta,
     this.uiNoticeAr,
+    this.highlightWordIndex,
+    this.uiNoteAr,
     required this.rawJson,
   });
 
@@ -106,6 +110,8 @@ class PromptItem {
       linePrompts: linePromptsList,
       errorMeta: json['error_meta'] as Map<String, dynamic>?,
       uiNoticeAr: json['ui_notice_ar'] as String?,
+      highlightWordIndex: (json['highlight_word_index'] as num?)?.toInt(),
+      uiNoteAr: json['ui_note_ar'] as String?,
       rawJson: json,
     );
   }
@@ -131,6 +137,8 @@ class PromptItem {
     map['line_prompts'] = linePrompts.map((l) => l.toJson()).toList();
     map['error_meta'] = errorMeta;
     map['ui_notice_ar'] = uiNoticeAr;
+    map['highlight_word_index'] = highlightWordIndex;
+    map['ui_note_ar'] = uiNoteAr;
     return map;
   }
 

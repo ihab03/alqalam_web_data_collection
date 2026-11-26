@@ -30,6 +30,12 @@ class StorageService {
     _inMemoryFallback.remove(key);
   }
 
+  /// Returns all stored keys starting with [prefix].
+  List<String> getKeysWithPrefix(String prefix) {
+    final keys = <String>{..._impl.getKeys(), ..._inMemoryFallback.keys};
+    return keys.where((k) => k.startsWith(prefix)).toList();
+  }
+
   /// Returns the browser User-Agent string.
   String getUserAgent() => _impl.getUserAgent();
 
